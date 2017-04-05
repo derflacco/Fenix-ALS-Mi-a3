@@ -1390,11 +1390,18 @@ config BOOT_INFO
 	  On embedded linux device, we try to collect more information from
 	  bootloader to kernel. eg. powerup reason.
 
+config BUILD_ARM64_DTC
+	string "dtc to use"
+
+config BUILD_ARM64_DTC_FLAGS
+	string "extra dtc flags"
+
 config BUILD_ARM64_DT_OVERLAY
 	bool "enable DT overlay compilation support"
 	depends on OF
 	help
 	  This option enables support for DT overlay compilation.
+
 endmenu
 
 menu "Userspace binary formats"
