@@ -103,7 +103,7 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
-	int skip;
+	int skip = 0;
 	long cur_state = 0;
 	unsigned long cur_sp = 0;
 	unsigned long cur_fp = 0;
@@ -209,14 +209,10 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		 TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk),
 		 end_of_stack(tsk));
 	show_regs(regs);
-
 #ifdef CONFIG_WT_BOOT_REASON
 	save_panic_key_log("Process %.*s (pid: %d)\n", TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk));
 #endif
-
-
-	if (!user_mode(regs)) {
-		dump_backtrace(regs, tsk);
+	if (!user_mode(regs))
 		dump_instr(KERN_EMERG, regs);
 
 	return ret;
