@@ -19,7 +19,7 @@ KERNEL_DIR=$PWD
 REPACK_DIR=$KERNEL_DIR/zip
 OUT=$KERNEL_DIR/out
 ZIP_NAME="$VERSION"-"$DATE"
-VERSION="platina-testing"
+VERSION="platina-beta4"
 DATE=$(date +%Y%m%d-%H%M)
 
 export KBUILD_BUILD_USER=builder
@@ -38,12 +38,12 @@ export KBUILD_COMPILER_STRING="$(${CLANG_TCHAIN} --version | head -n 1 | perl -p
 make_zip()
 {
                 cd $REPACK_DIR
-                mkdir kernel
-                mkdir dtbs
+               # mkdir kernel
+                #mkdir dtbs
                 #cp $KERNEL_DIR/out/arch/arm64/boot/Image.gz $REPACK_DIR/kernel/
                 rm $KERNEL_DIR/out/arch/arm64/boot/dts/qcom/modules.order
-                cp $KERNEL_DIR/out/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
-                cp $KERNEL_DIR/out/arch/arm64/boot/Image.gz $REPACK_DIR/kernel/
+                #cp $KERNEL_DIR/out/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
+                cp $KERNEL_DIR/out/arch/arm64/boot/Image.gz-dtb $REPACK_DIR/
 		FINAL_ZIP="Ancient-${VERSION}-${DATE}.zip"
         zip -r9 "${FINAL_ZIP}" *
 		cp *.zip $OUT
@@ -51,7 +51,7 @@ make_zip()
                 rm -rf kernel
                 rm -rf dtbs
 		cd $KERNEL_DIR
-		rm out/arch/arm64/boot/Image.gz
+		rm out/arch/arm64/boot/Image.gz-dtb
 }
 
 make platina_defconfig O=out/
@@ -61,6 +61,7 @@ make_zip
 BUILD_END=$(date +"%s")
 DIFF=$(($BUILD_END - $BUILD_START))
 rm -rf zip/kernel
+rm -rf zip/Image.gz-dtb
 rm -rf zip/dtbs
 echo -e ""
 echo -e ""
