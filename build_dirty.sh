@@ -19,22 +19,16 @@ KERNEL_DIR=$PWD
 REPACK_DIR=$KERNEL_DIR/zip
 OUT=$KERNEL_DIR/out
 ZIP_NAME="$VERSION"-"$DATE"
-VERSION="platina-beta4"
+VERSION="Reborn-beta_6"
 DATE=$(date +%Y%m%d-%H%M)
 
 export KBUILD_BUILD_USER=builder
-export KBUILD_BUILD_HOST=ancientdedicated
+export KBUILD_BUILD_HOST=FlaccoMachine
 export ARCH=arm64
 export SUBARCH=arm64
 export USE_CCACHE=1
-export CLANG_PATH=/root/reza/clang2/bin
-export PATH=${CLANG_PATH}:${PATH}
-export CLANG_TRIPLE=aarch64-linux-gnu-
-export CROSS_COMPILE=/root/reza/gcc/bin/aarch64-linux-android-
-#export CROSS_COMPILE_ARM32=/root/reza/gcc2/bin/arm-linux-androideabi-
-export CLANG_TCHAIN="/root/reza/clang2/bin/clang"
-export KBUILD_COMPILER_STRING="$(${CLANG_TCHAIN} --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g')"
-
+export CROSS_COMPILE=/home/derflacco/gcc-linaro-5.5.0-2017.10-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+make clean
 make_zip()
 {
                 cd $REPACK_DIR
@@ -44,7 +38,7 @@ make_zip()
                 rm $KERNEL_DIR/out/arch/arm64/boot/dts/qcom/modules.order
                 #cp $KERNEL_DIR/out/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
                 cp $KERNEL_DIR/out/arch/arm64/boot/Image.gz-dtb $REPACK_DIR/
-		FINAL_ZIP="Ancient-${VERSION}-${DATE}.zip"
+		FINAL_ZIP="Reborn-${VERSION}-${DATE}.zip"
         zip -r9 "${FINAL_ZIP}" *
 		cp *.zip $OUT
 		rm *.zip
@@ -54,7 +48,7 @@ make_zip()
 		rm out/arch/arm64/boot/Image.gz-dtb
 }
 
-make platina_defconfig O=out/
+make nokia_defconfig O=out/
 make -j$(nproc --all) O=out/
 make_zip
 
@@ -65,7 +59,7 @@ rm -rf zip/Image.gz-dtb
 rm -rf zip/dtbs
 echo -e ""
 echo -e ""
-echo -e "ANCIENT KERNEL"
+echo -e "DFK KERNEL"
 echo -e ""
 echo -e ""
 echo -e "Build completed in $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
