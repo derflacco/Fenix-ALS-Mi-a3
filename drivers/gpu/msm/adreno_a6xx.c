@@ -501,8 +501,6 @@ static void a6xx_pwrup_reglist_init(struct adreno_device *adreno_dev)
 
 static void a6xx_init(struct adreno_device *adreno_dev)
 {
-	a6xx_crashdump_init(adreno_dev);
-
 	/*
 	 * If the GMU is not enabled, rewrite the offset for the always on
 	 * counters to point to the CP always on instead of GMU always on
@@ -1788,75 +1786,7 @@ static struct adreno_irq a6xx_irq = {
 	.mask = A6XX_INT_MASK,
 };
 
-static bool adreno_is_qdss_dbg_register(struct kgsl_device *device,
-		unsigned int offsetwords)
-{
-	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-
-	return adreno_dev->qdss_gfx_virt &&
-		(offsetwords >= (adreno_dev->qdss_gfx_base >> 2)) &&
-		(offsetwords < (adreno_dev->qdss_gfx_base +
-				adreno_dev->qdss_gfx_len) >> 2);
-}
-
-
-static void adreno_qdss_gfx_dbg_regread(struct kgsl_device *device,
-	unsigned int offsetwords, unsigned int *value)
-{
-	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	unsigned int qdss_gfx_offset;
-
-	if (!adreno_is_qdss_dbg_register(device, offsetwords))
-		return;
-
-	qdss_gfx_offset = (offsetwords << 2) - adreno_dev->qdss_gfx_base;
-	*value = __raw_readl(adreno_dev->qdss_gfx_virt + qdss_gfx_offset);
-
-	/*
-	 * ensure this read finishes before the next one.
-	 * i.e. act like normal readl()
-	 */
-	rmb();
-}
-
-static void adreno_qdss_gfx_dbg_regwrite(struct kgsl_device *device,
-	unsigned int offsetwords, unsigned int value)
-{
-	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	unsigned int qdss_gfx_offset;
-
-	if (!adreno_is_qdss_dbg_register(device, offsetwords))
-		return;
-
-	qdss_gfx_offset = (offsetwords << 2) - adreno_dev->qdss_gfx_base;
-	trace_kgsl_regwrite(device, offsetwords, value);
-
-	/*
-	 * ensure previous writes post before this one,
-	 * i.e. act like normal writel()
-	 */
-	wmb();
-	__raw_writel(value, adreno_dev->qdss_gfx_virt + qdss_gfx_offset);
-}
-
-static void adreno_gx_regread(struct kgsl_device *device,
-	unsigned int offsetwords, unsigned int *value)
-{
-	if (adreno_is_qdss_dbg_register(device, offsetwords))
-		adreno_qdss_gfx_dbg_regread(device, offsetwords, value);
-	else
-		kgsl_regread(device, offsetwords, value);
-}
-
-static void adreno_gx_regwrite(struct kgsl_device *device,
-	unsigned int offsetwords, unsigned int value)
-{
-	if (adreno_is_qdss_dbg_register(device, offsetwords))
-		adreno_qdss_gfx_dbg_regwrite(device, offsetwords, value);
-	else
-		kgsl_regwrite(device, offsetwords, value);
-}
-
+#if 0
 static struct adreno_coresight_register a6xx_coresight_regs[] = {
 	{ A6XX_DBGC_CFG_DBGBUS_SEL_A },
 	{ A6XX_DBGC_CFG_DBGBUS_SEL_B },
@@ -2358,6 +2288,7 @@ static struct adreno_coresight a6xx_coresight_cx = {
 	.read = adreno_cx_dbgc_regread,
 	.write = adreno_cx_dbgc_regwrite,
 };
+#endif
 
 static struct adreno_perfcount_register a6xx_perfcounters_cp[] = {
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A6XX_RBBM_PERFCTR_CP_0_LO,
@@ -3206,9 +3137,7 @@ static void a6xx_clk_set_options(struct adreno_device *adreno_dev,
 struct adreno_gpudev adreno_a6xx_gpudev = {
 	.reg_offsets = &a6xx_reg_offsets,
 	.start = a6xx_start,
-	.snapshot = a6xx_snapshot,
 	.irq = &a6xx_irq,
-	.irq_trace = trace_kgsl_a5xx_irq_status,
 	.num_prio_levels = KGSL_PRIORITY_MAX_RB_LEVELS,
 	.platform_setup = a6xx_platform_setup,
 	.init = a6xx_init,
@@ -3240,6 +3169,4 @@ struct adreno_gpudev adreno_a6xx_gpudev = {
 	.ccu_invalidate = a6xx_ccu_invalidate,
 	.perfcounter_init = a6xx_perfcounter_init,
 	.perfcounter_update = a6xx_perfcounter_update,
-	.coresight = {&a6xx_coresight, &a6xx_coresight_cx},
-	.clk_set_options = a6xx_clk_set_options,
 };
