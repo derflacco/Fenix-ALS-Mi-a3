@@ -17,9 +17,9 @@ white='\e[0;37m'
 
 KERNEL_DIR=$PWD
 REPACK_DIR=$KERNEL_DIR/zip
-OUT=$KERNEL_DIR/out
+OUT=$KERNEL_DIR/output
 ZIP_NAME="$VERSION"-"$DATE"
-VERSION="Reborn-beta_6"
+VERSION="-Fenix-"
 DATE=$(date +%Y%m%d-%H%M)
 
 export KBUILD_BUILD_USER=builder
@@ -48,8 +48,8 @@ make_zip()
 		rm out/arch/arm64/boot/Image.gz-dtb
 }
 
-make nokia_defconfig O=out/
-make -j$(nproc --all) O=out/
+make nokia_defconfig O=output/
+make -j$(nproc --all) O=output/
 make_zip
 
 BUILD_END=$(date +"%s")

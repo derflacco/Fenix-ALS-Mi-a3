@@ -4,7 +4,7 @@
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=RebornKernel by DerFlacco
+kernel.string=-Fenix-Kernel by DerFlacco
 do.devicecheck=0
 do.modules=0
 do.cleanup=1
