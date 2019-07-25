@@ -2,6 +2,7 @@
  *      uvc_driver.c  --  USB Video Class driver
  *
  *      Copyright (C) 2005-2010
+ *      Copyright (C) 2019 XiaoMi, Inc.
  *          Laurent Pinchart (laurent.pinchart@ideasonboard.com)
  *
  *      This program is free software; you can redistribute it and/or modify
