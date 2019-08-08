@@ -878,6 +878,8 @@ int bio_add_page(struct bio *bio, struct page *page,
 	bv->bv_offset	= offset;
 
 	bio->bi_vcnt++;
+	if (!bio_flagged(bio, BIO_WORKINGSET) && unlikely(PageWorkingset(page)))
+		bio_set_flag(bio, BIO_WORKINGSET);
 done:
 	bio->bi_iter.bi_size += len;
 	return len;
