@@ -10,6 +10,7 @@
 #include <linux/msm_drm_notify.h>
 #include <linux/input.h>
 #include <linux/kthread.h>
+#include <linux/sched.h>
 #include <linux/version.h>
 #include <linux/slab.h>
 
@@ -193,6 +194,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	/* Unboost when the screen is off */
 	if (test_bit(SCREEN_OFF, &b->state)) {
 		policy->min = policy->cpuinfo.min_freq;
+		disable_schedtune_boost("top-app", true);
 		return NOTIFY_OK;
 	}
 
@@ -231,6 +233,7 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 	if (*blank == MSM_DRM_BLANK_UNBLANK) {
 		clear_bit(SCREEN_OFF, &b->state);
 		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
+		disable_schedtune_boost("top-app", false);
 	} else {
 		set_bit(SCREEN_OFF, &b->state);
 		wake_up(&b->boost_waitq);
