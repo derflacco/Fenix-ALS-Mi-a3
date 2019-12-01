@@ -532,7 +532,6 @@ struct smb_charger {
 	int			last_cc_soc;
 	int			charge_full_cc;
 	int			cc_soc_ref;
-	int			last_cc_soc;
 	int			dr_mode;
 	int			old_batt_status;
 	int			usbin_forced_max_uv;
