@@ -47,7 +47,6 @@ static struct kmem_cache *drawobj_sparse_cache;
 static struct kmem_cache *drawobj_sync_cache;
 static struct kmem_cache *drawobj_cmd_cache;
 
-#ifdef CONFIG_FENCE_DEBUG
 static void free_fence_names(struct kgsl_drawobj_sync *syncobj)
 {
 	unsigned int i;
@@ -602,6 +601,7 @@ static void add_profiling_buffer(struct kgsl_device *device,
 	else
 		cmdobj->profiling_buffer_gpuaddr = gpuaddr;
 }
+
 
 /**
  * kgsl_drawobj_cmd_add_ibdesc() - Add a legacy ibdesc to a command
