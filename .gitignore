@@ -125,3 +125,9 @@ all.config
 
 # fetched Android config fragments
 kernel/configs/android-*.cfg
+
+# folders
+/relases
+/out
+/output
+
