@@ -127,7 +127,7 @@ all.config
 kernel/configs/android-*.cfg
 
 # folders
-
+/relases
 /out
 /output
 /relases
