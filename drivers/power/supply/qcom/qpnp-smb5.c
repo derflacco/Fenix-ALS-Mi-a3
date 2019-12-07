@@ -237,7 +237,7 @@ struct smb5 {
 };
 extern void smb5_set_calling_current(struct smb_charger *chg);
 
-static int __debug_mask = PR_MISC | PR_INTERRUPT;
+static int __debug_mask = 0;
 module_param_named(
 	debug_mask, __debug_mask, int, 0600
 );
