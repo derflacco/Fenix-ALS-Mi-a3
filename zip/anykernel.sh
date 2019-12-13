@@ -43,11 +43,6 @@ else
   patch_cmdline "skip_override" "";
 fi;
 
-# Remove CAF Boost Framework cuz CAF is a hoe
-mount -o rw,remount -t auto /vendor >/dev/null; 
-rm -rf /vendor/etc/perf;
-mount -o ro,remount -t auto /vendor >/dev/null;
-
 # If the kernel image and dtbs are separated in the zip
 #decompressed_image=/tmp/anykernel/kernel/Image
 #compressed_image=$decompressed_image.gz
