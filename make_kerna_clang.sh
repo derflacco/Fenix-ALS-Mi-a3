@@ -42,7 +42,7 @@ make_zip()
                 rm -rf kernel
                 rm -rf dtbs
 		cd $KERNEL_DIR
-		rm out/arch/arm64/boot/Image.gz-dtb
+		rm output/arch/arm64/boot/Image.gz-dtb
 }
 
 make clean && make mrproper
