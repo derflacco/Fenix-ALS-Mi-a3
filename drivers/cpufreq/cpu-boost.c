@@ -276,6 +276,7 @@ static void do_input_boost(struct work_struct *work)
 					msecs_to_jiffies(input_boost_ms));
 }
 
+#ifdef CONFIG_SCHED_BOOST
 static void do_powerkey_input_boost(struct work_struct *work)
 {
 
@@ -309,7 +310,7 @@ static void do_powerkey_input_boost(struct work_struct *work)
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
 					msecs_to_jiffies(powerkey_input_boost_ms));
 }
-
+#endif
 static void cpuboost_input_event(struct input_handle *handle,
 		unsigned int type, unsigned int code, int value)
 {
@@ -414,7 +415,9 @@ static int cpu_boost_init(void)
 		return -EFAULT;
 
 	INIT_WORK(&input_boost_work, do_input_boost);
+#ifdef CONFIG_SCHED_BOOST
 	INIT_WORK(&powerkey_input_boost_work, do_powerkey_input_boost);
+#endif
 	INIT_DELAYED_WORK(&input_boost_rem, do_input_boost_rem);
 
 	for_each_possible_cpu(cpu) {
