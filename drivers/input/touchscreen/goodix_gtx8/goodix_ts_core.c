@@ -1901,6 +1901,7 @@ static int tid_open_short_test(struct device *dev, struct seq_file *seq,
 			       const struct firmware *fw)
 {
 	int ret = 0;
+        int i = 0;
 	struct ts_rawdata_info *info;
 	struct goodix_ts_core *core_data = dev_get_drvdata(dev);
 	ret = goodix_tools_register();
@@ -1921,7 +1922,7 @@ static int tid_open_short_test(struct device *dev, struct seq_file *seq,
 		ts_err("test error!");
 
 	seq_printf(seq, "buff_Info1:\n");
-	for (int i = 0; i < (info->used_size * 2); i++) {
+	for (i = 0; i < (info->used_size * 2); i++) {
 		if (i % 30 == 2)
 			seq_putc(seq, '\n');
 
