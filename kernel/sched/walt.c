@@ -922,6 +922,9 @@ void set_window_start(struct rq *rq)
 unsigned int max_possible_efficiency = 1;
 unsigned int min_possible_efficiency = UINT_MAX;
 
+unsigned int sysctl_sched_conservative_pl;
+unsigned int sysctl_sched_many_wakeup_threshold = 1000;
+
 #define INC_STEP 8
 #define DEC_STEP 2
 #define CONSISTENT_THRES 16
@@ -2022,11 +2025,10 @@ void init_new_task_load(struct task_struct *p)
 	memset(&p->ravg, 0, sizeof(struct ravg));
 	p->cpu_cycles = 0;
 
-	p->ravg.curr_window_cpu = kcalloc(nr_cpu_ids, sizeof(u32), GFP_KERNEL);
-	p->ravg.prev_window_cpu = kcalloc(nr_cpu_ids, sizeof(u32), GFP_KERNEL);
-
-	/* Don't have much choice. CPU frequency would be bogus */
-	BUG_ON(!p->ravg.curr_window_cpu || !p->ravg.prev_window_cpu);
+	p->ravg.curr_window_cpu = kcalloc(nr_cpu_ids, sizeof(u32),
+					  GFP_KERNEL | __GFP_NOFAIL);
+	p->ravg.prev_window_cpu = kcalloc(nr_cpu_ids, sizeof(u32),
+					  GFP_KERNEL | __GFP_NOFAIL);
 
 	if (init_load_pct) {
 		init_load_windows = div64_u64((u64)init_load_pct *

@@ -1186,6 +1186,19 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 		break;
 	}
 
+	if ((vfe_dev->nanosec_ts_enable) &&
+		(event_type == ISP_EVENT_SOF) &&
+			(frame_src == VFE_PIX_0)) {
+		struct msm_isp_event_data_nanosec event_data_nanosec;
+
+		event_data_nanosec.frame_id =
+			vfe_dev->axi_data.src_info[frame_src].frame_id;
+		event_data_nanosec.nano_timestamp = ts->buf_time_ns;
+		msm_isp_send_event_update_nanosec(vfe_dev,
+			ISP_EVENT_SOF_UPDATE_NANOSEC,
+			&event_data_nanosec);
+	}
+
 	event_data.frame_id = vfe_dev->axi_data.src_info[frame_src].frame_id;
 	event_data.timestamp = ts->event_time;
 	event_data.mono_timestamp = ts->buf_time;
@@ -2481,6 +2494,8 @@ int msm_isp_drop_frame(struct vfe_device *vfe_dev,
 			msm_isp_cfg_framedrop_reg(stream_info);
 		}
 	}
+	/* Avoid Multiple request frames for single SOF */
+	vfe_dev->axi_data.src_info[VFE_PIX_0].accept_frame = false;
 	spin_unlock_irqrestore(&stream_info->lock, flags);
 
 	/* if buf done will not come, we need to process it ourself */
@@ -3755,7 +3770,7 @@ static int msm_isp_return_empty_buffer(struct vfe_device *vfe_dev,
 	buf->buf_debug.put_state[buf->buf_debug.put_state_last] =
 		MSM_ISP_BUFFER_STATE_DROP_REG;
 	buf->buf_debug.put_state_last ^= 1;
-	rc = vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
+	rc = vfe_dev->buf_mgr->ops->buf_err(vfe_dev->buf_mgr,
 		buf->bufq_handle, buf->buf_idx,
 		&timestamp.buf_time, frame_id,
 		stream_info->runtime_output_format);
