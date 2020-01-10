@@ -2930,7 +2930,7 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 
 	if (!profile_node) {
 		pr_err("Couldn't find profile, default battery profile was set\n");
-		profile_node = of_batterydata_get_best_profile(batt_node,
+		profile_node = of_batterydata_get_best_profile(chip->batt_node,
 			chip->batt_id_ohm / 1000, BATTERY_DEFAULT);
 	}
 

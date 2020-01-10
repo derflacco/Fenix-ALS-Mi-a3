@@ -3486,7 +3486,7 @@ int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
 	 * to occur randomly in the USBIN channel, particularly at high
 	 * voltages.
 	 */
-	if (chg->smb_version == PM8150B_SUBTYPE && pval.intval)
+	if (chg->chg_param.smb_version == PM8150B_SUBTYPE && pval.intval)
 		rc = smblib_read_mid_voltage_chan(chg, val);
 	else
 		rc = smblib_read_usbin_voltage_chan(chg, val);
