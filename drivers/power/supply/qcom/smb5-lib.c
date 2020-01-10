@@ -3453,7 +3453,7 @@ int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
 	 * voltages.
 	 */
 	if (chg->chg_param.smb_version == PM8150B_SUBTYPE && pval.intval)
-		return smblib_read_mid_voltage_chan(chg, val);
+		rc = smblib_read_mid_voltage_chan(chg, val);
 	else
 		rc = smblib_read_usbin_voltage_chan(chg, val);
 		if (rc < 0) {
@@ -4979,6 +4979,7 @@ static void smblib_eval_chg_termination(struct smb_charger *chg, u8 batt_status)
 		chg->cc_soc_ref = 0;
 		chg->last_cc_soc = 0;
 		chg->chg_done = 1;
+		chg->term_vbat_uv = 0;
 		alarm_start_relative(&chg->chg_termination_alarm,
 				ms_to_ktime(CHG_TERM_WA_ENTRY_DELAY_MS));
 	} else if (pval.intval < 100) {
