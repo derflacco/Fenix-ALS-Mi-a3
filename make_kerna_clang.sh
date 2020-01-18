@@ -26,6 +26,7 @@ DATE=$(date +%Y%m%d-%H%M)
 export ARCH=arm64
 export SUBARCH=arm64
 export USE_CCACHE=1
+export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton_clang-10.0.0-20191109/lib
 make_zip()
 {
                 cd $REPACK_DIR
@@ -46,7 +47,7 @@ make_zip()
 }
 
 make clean && make mrproper
-PATH="/home/derflacco/toolchains/aosp_clang/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/:${PATH}"
+PATH="/home/derflacco/toolchains/proton_clang-11.0.0-20200117/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/:${PATH}"
 make O=output ARCH=arm64 vendor/fenix_defconfig
 make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-" CROSS_COMPILE_ARM32="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-"
 
