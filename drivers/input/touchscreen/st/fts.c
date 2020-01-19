@@ -4081,7 +4081,7 @@ static void fts_suspend_work(struct work_struct *work)
 		 */
 		if (pinctrl_select_state(info->ts_pinctrl,
 					info->pinctrl_state_suspend) < 0) {
-			logError(1, "%s: Failed to select %s pinstate\n",
+			logError(0 "%s: Failed to select %s pinstate\n",
 				__func__, PINCTRL_STATE_SUSPEND);
 		}
 	}
