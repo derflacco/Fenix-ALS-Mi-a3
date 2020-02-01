@@ -2960,6 +2960,10 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 		pr_err("Failed to read battery fastcharge current rc:%d\n", rc);
 		chip->bp.fastchg_curr_ma = -EINVAL;
 	}
+	#ifdef CONFIG_DISABLE_TEMP_PROTECT
+		chip->bp.float_volt_uv = 4100000;
+		chip->bp.fastchg_curr_ma = 1500;
+	#endif
 
 	/*
 	 * Update the max fcc values based on QG subtype including
