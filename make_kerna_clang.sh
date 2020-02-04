@@ -26,6 +26,7 @@ DATE=$(date +%Y%m%d-%H%M)
 export ARCH=arm64
 export SUBARCH=arm64
 export USE_CCACHE=1
+
 make_zip()
 {
                 cd $REPACK_DIR
@@ -42,14 +43,13 @@ make_zip()
                 rm -rf kernel
                 rm -rf dtbs
 		cd $KERNEL_DIR
-		rm out/arch/arm64/boot/Image.gz-dtb
+		rm output/arch/arm64/boot/Image.gz-dtb
 }
 
 make clean && make mrproper
-PATH="/home/derflacco/toolchains/aosp_clang/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/:${PATH}"
+PATH="/home/derflacco/toolchains/linux-x86-refs_heads_master-clang-r365631c/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
 make O=output ARCH=arm64 vendor/fenix_defconfig
-make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-" CROSS_COMPILE_ARM32="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-"
-PATH="/home/derflacco/toolchains/aosp_clang/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi/bin/:${PATH}"
+make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
 
 
 make_zip
