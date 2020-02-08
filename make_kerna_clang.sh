@@ -25,6 +25,7 @@ DATE=$(date +%Y%m%d-%H%M)
 
 export ARCH=arm64
 export SUBARCH=arm64
+export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton_clang-11.0.0-20200117/lib/
 export USE_CCACHE=1
 
 make_zip()
@@ -36,7 +37,7 @@ make_zip()
                 rm $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/modules.order
                 #cp $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
                 cp $KERNEL_DIR/output/arch/arm64/boot/Image.gz-dtb $REPACK_DIR/
-		FINAL_ZIP="Als-${VERSION}-${DATE}.zip"
+		FINAL_ZIP="Miui-${VERSION}-${DATE}.zip"
         zip -r9 "${FINAL_ZIP}" *
 		cp *.zip $OUT
 		rm *.zip
@@ -47,7 +48,7 @@ make_zip()
 }
 
 make clean && make mrproper
-PATH="/home/derflacco/toolchains/linux-x86-refs_heads_master-clang-r365631c/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
+PATH="/home/derflacco/toolchains/proton_clang-11.0.0-20200117/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
 make O=output ARCH=arm64 vendor/fenix_defconfig
 make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
 
