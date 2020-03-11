@@ -131,6 +131,52 @@ static QDF_STATUS p2p_vdev_check_valid(struct tx_action_context *tx_ctx)
 }
 
 /**
+ * p2p_check_and_update_channel() - check and update tx channel
+ * @tx_ctx:         tx context
+ *
+ * This function checks and updates tx channel if channel is 0 in tx context.
+ * It will update channel to current roc channel if vdev mode is
+ * P2P DEVICE/CLIENT/GO.
+ *
+ * Return: QDF_STATUS_SUCCESS - in case of success
+ */
+static QDF_STATUS p2p_check_and_update_channel(struct tx_action_context *tx_ctx)
+{
+	enum QDF_OPMODE mode;
+	struct wlan_objmgr_vdev *vdev;
+	struct wlan_objmgr_psoc *psoc;
+	struct p2p_soc_priv_obj *p2p_soc_obj;
+	struct p2p_roc_context *curr_roc_ctx;
+
+	if (!tx_ctx || tx_ctx->chan) {
+		p2p_err("NULL tx ctx or channel valid");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	p2p_soc_obj = tx_ctx->p2p_soc_obj;
+	psoc = p2p_soc_obj->soc;
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+			psoc, tx_ctx->vdev_id, WLAN_P2P_ID);
+	if (!vdev) {
+		p2p_err("null vdev object");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	mode = wlan_vdev_mlme_get_opmode(vdev);
+	curr_roc_ctx = p2p_find_current_roc_ctx(p2p_soc_obj);
+
+	if (curr_roc_ctx &&
+	    (mode == QDF_P2P_DEVICE_MODE ||
+	     mode == QDF_P2P_CLIENT_MODE ||
+	     mode == QDF_P2P_GO_MODE))
+		tx_ctx->chan = curr_roc_ctx->chan;
+
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
+
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
  * p2p_get_p2pie_ptr() - get the pointer to p2p ie
  * @ie:      source ie
  * @ie_len:  source ie length
@@ -490,6 +536,11 @@ static QDF_STATUS p2p_populate_mac_header(
 	psoc = tx_ctx->p2p_soc_obj->soc;
 
 	wh = (struct wlan_frame_hdr *)tx_ctx->buf;
+	/*
+	 * Remove the WEP bit if already set, p2p_populate_rmf_field will set it
+	 * if required.
+	 */
+	wh->i_fc[1] &= ~IEEE80211_FC1_WEP;
 	mac_addr = wh->i_addr1;
 	pdev_id = wlan_get_pdev_id_from_vdev_id(psoc, tx_ctx->vdev_id,
 						WLAN_P2P_ID);
@@ -642,11 +693,6 @@ static QDF_STATUS p2p_get_frame_info(uint8_t *data_buf, uint32_t length,
 	}
 
 	frame_info->type = P2P_FRAME_MGMT;
-	if (sub_type != P2P_MGMT_PROBE_RSP &&
-		sub_type != P2P_MGMT_ACTION) {
-		p2p_err("not support sub type");
-		return QDF_STATUS_E_FAILURE;
-	}
 
 	if (sub_type == P2P_MGMT_PROBE_RSP) {
 		frame_info->sub_type = P2P_MGMT_PROBE_RSP;
@@ -658,6 +704,11 @@ static QDF_STATUS p2p_get_frame_info(uint8_t *data_buf, uint32_t length,
 		frame_info->sub_type = P2P_MGMT_PROBE_REQ;
 		p2p_debug("Probe Request");
 		return QDF_STATUS_SUCCESS;
+	}
+
+	if (sub_type != P2P_MGMT_ACTION) {
+		p2p_debug("not support sub type");
+		return QDF_STATUS_E_FAILURE;
 	}
 
 	frame_info->sub_type = P2P_MGMT_ACTION;
@@ -915,13 +966,16 @@ static QDF_STATUS p2p_mgmt_tx(struct tx_action_context *tx_ctx,
 	void *mac_addr;
 	uint8_t pdev_id;
 	struct wlan_objmgr_vdev *vdev;
+	uint16_t chanfreq = 0;
 
 	psoc = tx_ctx->p2p_soc_obj->soc;
 	mgmt_param.tx_frame = packet;
 	mgmt_param.frm_len = buf_len;
 	mgmt_param.vdev_id = tx_ctx->vdev_id;
 	mgmt_param.pdata = frame;
-	mgmt_param.chanfreq = wlan_chan_to_freq(tx_ctx->chan);
+	if (tx_ctx->chan)
+		chanfreq = (uint16_t)wlan_chan_to_freq(tx_ctx->chan);
+	mgmt_param.chanfreq = chanfreq;
 
 	mgmt_param.qdf_ctx = wlan_psoc_get_qdf_dev(psoc);
 	if (!(mgmt_param.qdf_ctx)) {
@@ -1305,18 +1359,38 @@ end:
  */
 static void p2p_tx_timeout(void *pdata)
 {
-	struct tx_action_context *tx_ctx = pdata;
+	QDF_STATUS status, ret;
+	qdf_list_node_t *p_node;
+	struct tx_action_context *tx_ctx;
+	struct p2p_soc_priv_obj *p2p_soc_obj;
 
 	p2p_info("pdata:%pK", pdata);
-
-	if (!tx_ctx || !(tx_ctx->p2p_soc_obj)) {
-		p2p_err("invalid tx context or p2p soc object");
+	p2p_soc_obj = (struct p2p_soc_priv_obj *)pdata;
+	if (!p2p_soc_obj) {
+		p2p_err("null p2p psoc obj");
 		return;
 	}
 
-	qdf_mc_timer_destroy(&tx_ctx->tx_timer);
-	p2p_send_tx_conf(tx_ctx, false);
-	p2p_remove_tx_context(tx_ctx);
+	status = qdf_list_peek_front(&p2p_soc_obj->tx_q_ack, &p_node);
+	while (QDF_IS_STATUS_SUCCESS(status)) {
+		tx_ctx = qdf_container_of(p_node,
+					  struct tx_action_context, node);
+		status = qdf_list_peek_next(&p2p_soc_obj->tx_q_ack,
+					    p_node, &p_node);
+		if (QDF_TIMER_STATE_STOPPED ==
+		    qdf_mc_timer_get_current_state(&tx_ctx->tx_timer)) {
+			ret = qdf_list_remove_node(&p2p_soc_obj->tx_q_ack,
+						   &tx_ctx->node);
+			if (ret == QDF_STATUS_SUCCESS) {
+				qdf_mc_timer_destroy(&tx_ctx->tx_timer);
+				p2p_send_tx_conf(tx_ctx, false);
+				qdf_mem_free(tx_ctx->buf);
+				qdf_mem_free(tx_ctx);
+			} else
+				p2p_err("remove %pK from roc_q fail",
+					tx_ctx);
+		}
+	}
 }
 
 /**
@@ -1334,15 +1408,15 @@ static QDF_STATUS p2p_enable_tx_timer(struct tx_action_context *tx_ctx)
 	p2p_debug("tx context:%pK", tx_ctx);
 
 	status = qdf_mc_timer_init(&tx_ctx->tx_timer,
-			QDF_TIMER_TYPE_SW, p2p_tx_timeout,
-			tx_ctx);
+				   QDF_TIMER_TYPE_SW, p2p_tx_timeout,
+				   tx_ctx->p2p_soc_obj);
 	if (status != QDF_STATUS_SUCCESS) {
 		p2p_err("failed to init tx timer");
 		return status;
 	}
 
 	status = qdf_mc_timer_start(&tx_ctx->tx_timer,
-			P2P_ACTION_FRAME_TX_TIMEOUT);
+				    P2P_ACTION_FRAME_TX_TIMEOUT);
 	if (status != QDF_STATUS_SUCCESS)
 		p2p_err("tx timer start failed");
 
@@ -1428,6 +1502,7 @@ static QDF_STATUS p2p_populate_rmf_field(struct tx_action_context *tx_ctx,
 	uint8_t *frame;
 	uint32_t frame_len;
 	struct p2p_soc_priv_obj *p2p_soc_obj;
+	uint8_t action_category;
 
 	p2p_soc_obj = tx_ctx->p2p_soc_obj;
 
@@ -1442,8 +1517,14 @@ static QDF_STATUS p2p_populate_rmf_field(struct tx_action_context *tx_ctx,
 	wh = (struct wlan_frame_hdr *)(*ppbuf);
 	action_hdr = (struct action_frm_hdr *)(*ppbuf + sizeof(*wh));
 
-	if (!is_rmf_mgmt_action_frame(action_hdr->action_category)) {
-		p2p_debug("non rmf act frame 0x%x cat %x",
+	/*
+	 * For Action frame which are not handled, the resp is sent back to the
+	 * source without change, except that MSB of the Category set to 1, so
+	 * to get the actual action category we need to ignore the MSB.
+	 */
+	action_category = action_hdr->action_category & 0x7f;
+	if (!is_rmf_mgmt_action_frame(action_category)) {
+		p2p_debug("non rmf act frame 0x%x category %x",
 			  tx_ctx->frame_info.sub_type,
 			  action_hdr->action_category);
 		return QDF_STATUS_SUCCESS;
@@ -2730,7 +2811,9 @@ QDF_STATUS p2p_process_mgmt_tx(struct tx_action_context *tx_ctx)
 		tx_ctx->no_ack = 1;
 	}
 
-	if (!tx_ctx->off_chan) {
+	if (!tx_ctx->off_chan || !tx_ctx->chan) {
+		if (!tx_ctx->chan)
+			p2p_check_and_update_channel(tx_ctx);
 		status = p2p_execute_tx_action_frame(tx_ctx);
 		if (status != QDF_STATUS_SUCCESS) {
 			p2p_err("execute tx fail");

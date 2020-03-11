@@ -20,8 +20,12 @@
  */
 #include "wlan_mlme_main.h"
 #include "wmi_unified.h"
+#include "wlan_utility.h"
+#include "wma_types.h"
+#include "wma.h"
+#include "wma_internal.h"
 
-static struct vdev_mlme_priv_obj *
+struct vdev_mlme_priv_obj *
 wlan_vdev_mlme_get_priv_obj(struct wlan_objmgr_vdev *vdev)
 {
 	struct vdev_mlme_priv_obj *vdev_mlme;
@@ -53,6 +57,76 @@ struct mlme_nss_chains *mlme_get_dynamic_vdev_config(
 	}
 
 	return &vdev_mlme->dynamic_cfg;
+}
+
+/**
+ * wlan_mlme_send_oce_flags_fw() - Send the oce flags to FW
+ * @pdev: pointer to pdev object
+ * @object: vdev object
+ * @arg: Arguments to the handler
+ *
+ * Return: void
+ */
+static void wlan_mlme_send_oce_flags_fw(struct wlan_objmgr_pdev *pdev,
+					void *object, void *arg)
+{
+	struct wlan_objmgr_vdev *vdev = object;
+	uint8_t *updated_fw_value = arg;
+	uint8_t *dynamic_fw_value = 0;
+	uint8_t vdev_id;
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE) {
+		vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+		if (!vdev_mlme) {
+			mlme_err("vdev component object is NULL");
+			return;
+		}
+		dynamic_fw_value = &vdev_mlme->sta_dynamic_oce_value;
+		if (*updated_fw_value == *dynamic_fw_value) {
+			mlme_debug("Current FW flags matches with updated value.");
+			return;
+		}
+		*dynamic_fw_value = *updated_fw_value;
+		vdev_id = wlan_vdev_get_id(vdev);
+		if (wma_cli_set_command(vdev_id,
+					WMI_VDEV_PARAM_ENABLE_DISABLE_OCE_FEATURES,
+					*updated_fw_value, VDEV_CMD))
+			mlme_err("Failed to send OCE update to FW");
+	}
+}
+
+void wlan_mlme_update_oce_flags(struct wlan_objmgr_pdev *pdev,
+				uint8_t cfg_value)
+{
+	uint16_t sap_connected_peer, go_connected_peer;
+	struct wlan_objmgr_psoc *psoc = NULL;
+	uint8_t updated_fw_value = 0;
+
+	psoc = wlan_pdev_get_psoc(pdev);
+	if (!psoc)
+		return;
+	sap_connected_peer =
+	wlan_util_get_peer_count_for_mode(pdev, QDF_SAP_MODE);
+	go_connected_peer =
+	wlan_util_get_peer_count_for_mode(pdev, QDF_P2P_GO_MODE);
+
+	if (sap_connected_peer || go_connected_peer) {
+		updated_fw_value = cfg_value;
+		updated_fw_value &=
+		~(WMI_VDEV_OCE_PROBE_REQUEST_RATE_FEATURE_BITMAP);
+		updated_fw_value &=
+		~(WMI_VDEV_OCE_PROBE_REQUEST_DEFERRAL_FEATURE_BITMAP);
+		mlme_debug("Disable STA OCE probe req rate and defferal updated_fw_value :%d",
+			   updated_fw_value);
+	} else {
+		updated_fw_value = cfg_value;
+		mlme_debug("Update the STA OCE flags to default INI updated_fw_value :%d",
+			   updated_fw_value);
+	}
+	wlan_objmgr_pdev_iterate_obj_list(pdev, WLAN_VDEV_OP,
+				wlan_mlme_send_oce_flags_fw,
+				&updated_fw_value, 0, WLAN_MLME_NB_ID);
 }
 
 struct mlme_nss_chains *mlme_get_ini_vdev_config(
@@ -119,6 +193,8 @@ mlme_vdev_object_destroyed_notification(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	mlme_free_self_disconnect_ies(vdev);
+	mlme_free_peer_disconnect_ies(vdev);
 	status = wlan_objmgr_vdev_component_obj_detach(vdev,
 						       WLAN_UMAC_COMP_MLME,
 						       vdev_mlme);
@@ -225,4 +301,160 @@ mlme_peer_object_destroyed_notification(struct wlan_objmgr_peer *peer,
 	qdf_mem_free(peer_priv);
 
 	return status;
+}
+
+void mlme_set_peer_pmf_status(struct wlan_objmgr_peer *peer,
+			      bool is_pmf_enabled)
+{
+	struct peer_mlme_priv_obj *peer_priv;
+
+	peer_priv = wlan_objmgr_peer_get_comp_private_obj(peer,
+							  WLAN_UMAC_COMP_MLME);
+	if (!peer_priv) {
+		mlme_err(" peer mlme component object is NULL");
+		return;
+	}
+	peer_priv->is_pmf_enabled = is_pmf_enabled;
+}
+
+bool mlme_get_peer_pmf_status(struct wlan_objmgr_peer *peer)
+{
+	struct peer_mlme_priv_obj *peer_priv;
+
+	peer_priv = wlan_objmgr_peer_get_comp_private_obj(peer,
+							  WLAN_UMAC_COMP_MLME);
+	if (!peer_priv) {
+		mlme_err("peer mlme component object is NULL");
+		return false;
+	}
+
+	return peer_priv->is_pmf_enabled;
+}
+
+void mlme_set_self_disconnect_ies(struct wlan_objmgr_vdev *vdev,
+				  struct wlan_ies *ie)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	if (!ie || !ie->len || !ie->data) {
+		mlme_debug("disocnnect IEs are NULL");
+		return;
+	}
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return;
+	}
+
+	if (vdev_mlme->self_disconnect_ies.data) {
+		qdf_mem_free(vdev_mlme->self_disconnect_ies.data);
+		vdev_mlme->self_disconnect_ies.len = 0;
+	}
+
+	vdev_mlme->self_disconnect_ies.data = qdf_mem_malloc(ie->len);
+	if (!vdev_mlme->self_disconnect_ies.data)
+		return;
+
+	qdf_mem_copy(vdev_mlme->self_disconnect_ies.data, ie->data, ie->len);
+	vdev_mlme->self_disconnect_ies.len = ie->len;
+
+	mlme_debug("Self disconnect IEs");
+	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_MLME, QDF_TRACE_LEVEL_DEBUG,
+			   vdev_mlme->self_disconnect_ies.data,
+			   vdev_mlme->self_disconnect_ies.len);
+}
+
+void mlme_free_self_disconnect_ies(struct wlan_objmgr_vdev *vdev)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return;
+	}
+
+	if (vdev_mlme->self_disconnect_ies.data) {
+		qdf_mem_free(vdev_mlme->self_disconnect_ies.data);
+		vdev_mlme->self_disconnect_ies.data = NULL;
+		vdev_mlme->self_disconnect_ies.len = 0;
+	}
+}
+
+struct wlan_ies *mlme_get_self_disconnect_ies(struct wlan_objmgr_vdev *vdev)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return NULL;
+	}
+
+	return &vdev_mlme->self_disconnect_ies;
+}
+
+void mlme_set_peer_disconnect_ies(struct wlan_objmgr_vdev *vdev,
+				  struct wlan_ies *ie)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	if (!ie || !ie->len || !ie->data) {
+		mlme_debug("disocnnect IEs are NULL");
+		return;
+	}
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return;
+	}
+
+	if (vdev_mlme->peer_disconnect_ies.data) {
+		qdf_mem_free(vdev_mlme->peer_disconnect_ies.data);
+		vdev_mlme->peer_disconnect_ies.len = 0;
+	}
+
+	vdev_mlme->peer_disconnect_ies.data = qdf_mem_malloc(ie->len);
+	if (!vdev_mlme->peer_disconnect_ies.data)
+		return;
+
+	qdf_mem_copy(vdev_mlme->peer_disconnect_ies.data, ie->data, ie->len);
+	vdev_mlme->peer_disconnect_ies.len = ie->len;
+
+	mlme_debug("peer disconnect IEs");
+	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_MLME, QDF_TRACE_LEVEL_DEBUG,
+			   vdev_mlme->peer_disconnect_ies.data,
+			   vdev_mlme->peer_disconnect_ies.len);
+}
+
+void mlme_free_peer_disconnect_ies(struct wlan_objmgr_vdev *vdev)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return;
+	}
+
+	if (vdev_mlme->peer_disconnect_ies.data) {
+		qdf_mem_free(vdev_mlme->peer_disconnect_ies.data);
+		vdev_mlme->peer_disconnect_ies.data = NULL;
+		vdev_mlme->peer_disconnect_ies.len = 0;
+	}
+}
+
+struct wlan_ies *mlme_get_peer_disconnect_ies(struct wlan_objmgr_vdev *vdev)
+{
+	struct vdev_mlme_priv_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_priv_obj(vdev);
+	if (!vdev_mlme) {
+		mlme_err("vdev component object is NULL");
+		return NULL;
+	}
+
+	return &vdev_mlme->peer_disconnect_ies;
 }

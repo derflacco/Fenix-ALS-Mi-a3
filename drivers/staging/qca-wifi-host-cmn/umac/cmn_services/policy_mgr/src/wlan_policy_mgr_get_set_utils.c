@@ -32,6 +32,7 @@
 #include "wlan_objmgr_global_obj.h"
 #include "wlan_objmgr_pdev_obj.h"
 #include "wlan_objmgr_vdev_obj.h"
+#include "wlan_reg_services_api.h"
 
 /* invalid channel id. */
 #define INVALID_CHANNEL_ID 0
@@ -1270,7 +1271,7 @@ QDF_STATUS policy_mgr_incr_connection_count(
 {
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 	uint32_t conn_index;
-	struct policy_mgr_vdev_entry_info conn_table_entry;
+	struct policy_mgr_vdev_entry_info conn_table_entry = {0};
 	enum policy_mgr_chain_mode chain_mask = POLICY_MGR_ONE_ONE;
 	uint8_t nss_2g = 0, nss_5g = 0;
 	enum policy_mgr_con_mode mode;
@@ -1570,6 +1571,7 @@ bool policy_mgr_is_concurrency_allowed(struct wlan_objmgr_psoc *psoc,
 	uint32_t list[MAX_NUMBER_OF_CONC_CONNECTIONS];
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
 	bool sta_sap_scc_on_dfs_chan;
+	uint8_t chan;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -1630,14 +1632,18 @@ bool policy_mgr_is_concurrency_allowed(struct wlan_objmgr_psoc *psoc,
 		}
 	}
 
+	/* Check for STA+STA concurrency */
 	count = policy_mgr_mode_specific_connection_count(psoc, PM_STA_MODE,
 							  list);
-
-	/* Check for STA+STA concurrency */
-	if (mode == PM_STA_MODE && count &&
-	    !policy_mgr_allow_multiple_sta_connections(psoc)) {
-		policy_mgr_err("No 2nd STA connection, already one STA is connected");
-		goto done;
+	if (mode == PM_STA_MODE && count) {
+		if (count >= 2) {
+			policy_mgr_err("3rd STA isn't permitted");
+			goto done;
+		}
+		chan = pm_conc_connection_list[list[0]].chan;
+		if (!policy_mgr_allow_multiple_sta_connections(psoc, channel,
+							       chan))
+			goto done;
 	}
 
 	/*
@@ -1794,6 +1800,13 @@ bool  policy_mgr_allow_concurrency_csa(struct wlan_objmgr_psoc *psoc,
 	bool allow = false;
 	struct policy_mgr_conc_connection_info info;
 	uint8_t num_cxn_del = 0;
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid Context");
+		return allow;
+	}
 
 	/*
 	 * Store the connection's parameter and temporarily delete it
@@ -1801,6 +1814,7 @@ bool  policy_mgr_allow_concurrency_csa(struct wlan_objmgr_psoc *psoc,
 	 * check can be used as though a new connection is coming up,
 	 * after check, restore the connection to concurrency table.
 	 */
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
 	policy_mgr_store_and_del_conn_info_by_vdev_id(psoc, vdev_id,
 						      &info, &num_cxn_del);
 	allow = policy_mgr_allow_concurrency(
@@ -1808,11 +1822,13 @@ bool  policy_mgr_allow_concurrency_csa(struct wlan_objmgr_psoc *psoc,
 				mode,
 				channel,
 				HW_MODE_20_MHZ);
-	if (!allow)
-		policy_mgr_err("CSA concurrency check failed");
 	/* Restore the connection entry */
 	if (num_cxn_del > 0)
 		policy_mgr_restore_deleted_conn_info(psoc, &info, num_cxn_del);
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	if (!allow)
+		policy_mgr_err("CSA concurrency check failed");
 
 	return allow;
 }
@@ -2664,7 +2680,7 @@ QDF_STATUS policy_mgr_is_chan_ok_for_dnbs(struct wlan_objmgr_psoc *psoc,
 	uint8_t vdev_id[MAX_NUMBER_OF_CONC_CONNECTIONS];
 	struct wlan_objmgr_vdev *vdev;
 
-	if (!channel || !ok) {
+	if (!ok) {
 		policy_mgr_err("Invalid parameter");
 		return QDF_STATUS_E_INVAL;
 	}
@@ -2683,6 +2699,11 @@ QDF_STATUS policy_mgr_is_chan_ok_for_dnbs(struct wlan_objmgr_psoc *psoc,
 	if (!cc_count) {
 		*ok = true;
 		return QDF_STATUS_SUCCESS;
+	}
+
+	if (!channel) {
+		policy_mgr_err("channel is 0, cc count %d", cc_count);
+		return QDF_STATUS_E_INVAL;
 	}
 
 	for (i = 0; i < cc_count; i++) {
@@ -2931,6 +2952,95 @@ bool policy_mgr_is_sta_sap_scc_allowed_on_dfs_chan(
 	return status;
 }
 
+bool
+policy_mgr_get_dfs_master_dynamic_enabled(
+	struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	bool sta_on_5g = false;
+	bool sta_on_2g = false;
+	uint32_t i;
+	bool enable;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("pm_ctx is NULL");
+		return true;
+	}
+
+	if (!pm_ctx->user_cfg.is_sta_sap_scc_allowed_on_dfs_chan)
+		return true;
+	if (pm_ctx->user_cfg.is_sta_sap_scc_allowed_on_dfs_chan ==
+	    PM_STA_SAP_ON_DFS_MASTER_MODE_DISABLED)
+		return false;
+	if (pm_ctx->user_cfg.is_sta_sap_scc_allowed_on_dfs_chan !=
+	    PM_STA_SAP_ON_DFS_MASTER_MODE_FLEX) {
+		policy_mgr_debug("sta_sap_scc_on_dfs_chnl %d unknown",
+				 pm_ctx->user_cfg.is_sta_sap_scc_allowed_on_dfs_chan);
+		return true;
+	}
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	for (i = 0; i < MAX_NUMBER_OF_CONC_CONNECTIONS; i++) {
+		if (!((pm_conc_connection_list[i].vdev_id != vdev_id) &&
+		      pm_conc_connection_list[i].in_use &&
+		      (pm_conc_connection_list[i].mode == PM_STA_MODE ||
+		       pm_conc_connection_list[i].mode == PM_P2P_CLIENT_MODE)))
+			continue;
+		if (WLAN_REG_IS_5GHZ_CH(pm_conc_connection_list[i].chan))
+			sta_on_5g = true;
+		else
+			sta_on_2g = true;
+	}
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	if (policy_mgr_is_hw_dbs_capable(psoc) && !sta_on_5g)
+		enable = true;
+	else if (!sta_on_5g && !sta_on_2g)
+		enable = true;
+	else
+		enable = false;
+	policy_mgr_debug("sta_sap_scc_on_dfs_chnl %d sta_on_2g %d sta_on_5g %d enable %d",
+			 pm_ctx->user_cfg.is_sta_sap_scc_allowed_on_dfs_chan, sta_on_2g,
+			 sta_on_5g, enable);
+
+	return enable;
+}
+
+bool policy_mgr_scan_trim_5g_chnls_for_dfs_ap(struct wlan_objmgr_psoc *psoc)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	uint8_t ap_dfs_channel = 0;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid Context");
+		return false;
+	}
+
+	policy_mgr_is_any_dfs_beaconing_session_present(
+		psoc, &ap_dfs_channel);
+	if (!ap_dfs_channel)
+		return false;
+	/*
+	 * 1) if agile & DFS scans are supportet
+	 * 2) if hardware is DBS capable
+	 * 3) if current hw mode is non-dbs
+	 * if all above 3 conditions are true then don't skip any
+	 * channel from scan list
+	 */
+	if (policy_mgr_is_hw_dbs_capable(psoc) &&
+	    !policy_mgr_is_current_hwmode_dbs(psoc) &&
+	    policy_mgr_get_dbs_plus_agile_scan_config(psoc) &&
+	    policy_mgr_get_single_mac_scan_with_dfs_config(psoc))
+		return false;
+
+	policy_mgr_err("scan skip 5g chan due to dfs ap(ch %d) present",
+		       ap_dfs_channel);
+
+	return true;
+}
+
 bool policy_mgr_is_sta_connected_2g(struct wlan_objmgr_psoc *psoc)
 {
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
@@ -3117,7 +3227,9 @@ bool policy_mgr_allow_sap_go_concurrency(struct wlan_objmgr_psoc *psoc,
 	return true;
 }
 
-bool policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc)
+bool policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc,
+					       uint8_t second_sta_chan,
+					       uint8_t first_sta_chan)
 {
 	struct wmi_unified *wmi_handle;
 
@@ -3126,13 +3238,11 @@ bool policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc)
 		policy_mgr_debug("Invalid WMI handle");
 		return false;
 	}
+	if (!wmi_service_enabled(wmi_handle,
+				 wmi_service_sta_plus_sta_support))
+		return false;
 
-	if (wmi_service_enabled(wmi_handle,
-				wmi_service_sta_plus_sta_support))
-		return true;
-
-	policy_mgr_debug("Concurrent STA connections are not supported");
-	return false;
+	return true;
 }
 
 bool policy_mgr_dual_beacon_on_single_mac_scc_capable(

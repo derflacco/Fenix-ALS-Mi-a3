@@ -518,9 +518,9 @@ void pktlog_init(struct hif_opaque_softc *scn)
 	}
 }
 
-static int __pktlog_enable(struct hif_opaque_softc *scn, int32_t log_state,
-		 bool ini_triggered, uint8_t user_triggered,
-		 uint32_t is_iwpriv_command)
+int __pktlog_enable(struct hif_opaque_softc *scn, int32_t log_state,
+		    bool ini_triggered, uint8_t user_triggered,
+		    uint32_t is_iwpriv_command)
 {
 	struct pktlog_dev_t *pl_dev;
 	struct ath_pktlog_info *pl_info;
@@ -830,7 +830,7 @@ int pktlog_clearbuff(struct hif_opaque_softc *scn, bool clear_buff)
 
 	if (pl_info->buf != NULL) {
 		if (pl_info->buf_size > 0) {
-			qdf_print("%s: pktlog buffer is cleared.", __func__);
+			qdf_debug("pktlog buffer is cleared");
 			memset(pl_info->buf, 0, pl_info->buf_size);
 			pl_dev->is_pktlog_cb_subscribed = false;
 			pl_dev->tgt_pktlog_alloced = false;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -63,6 +63,53 @@ typedef const enum policy_mgr_conc_next_action
 #define PM_CHANNEL_SELECT_LOGIC_STA_P2P_GET(channel_select_logic_conc)  \
 	((channel_select_logic_conc & PM_FW_MODE_STA_P2P_BIT_MASK) >>   \
 	 PM_FW_MODE_STA_P2P_BIT_POS)
+
+/**
+ * enum PM_AP_DFS_MASTER_MODE - AP dfs master mode
+ * @PM_STA_SAP_ON_DFS_DEFAULT - Disallow STA+SAP SCC on DFS channel
+ * @PM_STA_SAP_ON_DFS_MASTER_MODE_DISABLED - Allow STA+SAP SCC
+ *        on DFS channel with master mode disabled
+ * @PM_STA_SAP_ON_DFS_MASTER_MODE_FLEX - enhance
+ *        "PM_STA_SAP_ON_DFS_MASTER_MODE_DISABLED" with below requirement:
+ *	 a. Allow single SAP (GO) start on DFS channel.
+ *	 b. Allow CAC process on DFS channel in single SAP (GO) mode
+ *	 c. Allow DFS radar event process in single SAP (GO) mode
+ *	 d. Disallow CAC and radar event process in SAP (GO) + STA mode.
+ *
+ * This enum value will be used to set to INI g_sta_sap_scc_on_dfs_chan to
+ * config the sta+sap on dfs channel behaviour expected by user.
+ */
+enum PM_AP_DFS_MASTER_MODE {
+	PM_STA_SAP_ON_DFS_DEFAULT,
+	PM_STA_SAP_ON_DFS_MASTER_MODE_DISABLED,
+	PM_STA_SAP_ON_DFS_MASTER_MODE_FLEX,
+};
+
+/**
+ * policy_mgr_get_dfs_master_dynamic_enabled() - support dfs master or not
+ * on AP interafce when STA+SAP(GO) concurrency
+ * @psoc: pointer to psoc
+ * @vdev_id: sap vdev id
+ *
+ * This API is used to check AP dfs master functionality enabled or not when
+ * STA+SAP(GO) concurrency.
+ * If g_sta_sap_scc_on_dfs_chan is non-zero, the STA+SAP(GO) concurrency
+ * is allowed on DFS channel SCC and the SAP's DFS master functionality
+ * should be enable/disable according to:
+ * 1. g_sta_sap_scc_on_dfs_chan is 0: function return true - dfs master
+ *     capability enabled.
+ * 2. g_sta_sap_scc_on_dfs_chan is 1: function return false - dfs master
+ *     capability disabled.
+ * 3. g_sta_sap_scc_on_dfs_chan is 2: dfs master capability based on STA on
+ *     5G or not:
+ *      a. 5G STA active - return false
+ *      b. no 5G STA active -return true
+ *
+ * Return: true if dfs master functionality should be enabled.
+ */
+bool
+policy_mgr_get_dfs_master_dynamic_enabled(struct wlan_objmgr_psoc *psoc,
+					  uint8_t vdev_id);
 
 /**
  * policy_mgr_set_concurrency_mode() - To set concurrency mode
@@ -1325,6 +1372,20 @@ bool policy_mgr_list_has_24GHz_channel(uint8_t *channel_list,
 		uint32_t list_len);
 
 /**
+ * policy_mgr_get_valid_chans_from_range() - get valid channel from given range
+ * @psoc: PSOC object information
+ * @ch_list: Pointer to the channel list
+ * @ch_cnt: Pointer to the length of the channel list
+ * @mode: Device mode
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS policy_mgr_get_valid_chans_from_range(struct wlan_objmgr_psoc *psoc,
+						 uint8_t *ch_list,
+						 uint32_t *ch_cnt,
+						 enum policy_mgr_con_mode mode);
+
+/**
  * policy_mgr_get_valid_chans() - Get the valid channel list
  * @psoc: PSOC object information
  * @chan_list: Pointer to the valid channel list
@@ -2407,6 +2468,17 @@ void policy_mgr_trim_acs_channel_list(struct wlan_objmgr_psoc *psoc,
 		uint8_t *org_ch_list, uint8_t *org_ch_list_count);
 
 /**
+ * policy_mgr_scan_trim_5g_chnls_for_dfs_ap() - check if sta scan should skip
+ * 5g channel when dfs ap is present.
+ *
+ * @psoc: pointer to soc
+ *
+ * Return: true if sta scan 5g chan should be skipped
+ */
+bool policy_mgr_scan_trim_5g_chnls_for_dfs_ap(struct wlan_objmgr_psoc *psoc);
+
+
+/**
  * policy_mgr_is_hwmode_set_for_given_chnl() - to check for given channel
  * if the hw mode is properly set.
  * @psoc: pointer to psoc
@@ -2483,15 +2555,17 @@ bool policy_mgr_allow_sap_go_concurrency(struct wlan_objmgr_psoc *psoc,
 					 uint32_t vdev_id);
 
 /**
- * policy_mgr_allow_multiple_sta_connections() - API to get FW support
+ * policy_mgr_allow_multiple_sta_connections() - check whether multiple STA
+ * concurrency is allowed and F/W supported
  * @psoc: Pointer to soc
- *
- * This function checks FW support for simultaneous connections on
- * concurrent STA interfaces.
+ * @second_sta_chan: 2nd STA channel
+ * @first_sta_chan: 1st STA channel
  *
  *  Return: true if supports else false.
  */
-bool policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc);
+bool policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc,
+					       uint8_t second_sta_chan,
+					       uint8_t first_sta_chan);
 
 /**
  * policy_mgr_dual_beacon_on_single_mac_scc_capable() - get capability that

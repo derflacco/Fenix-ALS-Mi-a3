@@ -77,6 +77,7 @@
 #include "wlan_ipa_ucfg_api.h"
 #include <wlan_cfg80211_mc_cp_stats.h>
 #include "wlan_p2p_ucfg_api.h"
+#include "wlan_osif_request_manager.h"
 
 /* Preprocessor definitions and constants */
 #ifdef QCA_WIFI_NAPIER_EMULATION
@@ -373,6 +374,13 @@ void hdd_enable_ns_offload(struct hdd_adapter *adapter,
 	ns_req->trigger = trigger;
 	ns_req->count = 0;
 
+	/* check if offload cache and send is required or not */
+	status = ucfg_pmo_ns_offload_check(psoc, trigger, adapter->session_id);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_info("NS offload is not required");
+		goto free_req;
+	}
+
 	/* Unicast Addresses */
 	errno = hdd_fill_ipv6_uc_addr(in6_dev, ns_req->ipv6_addr,
 				      ns_req->ipv6_addr_type, ns_req->scope,
@@ -420,9 +428,19 @@ void hdd_disable_ns_offload(struct hdd_adapter *adapter,
 		enum pmo_offload_trigger trigger)
 {
 	QDF_STATUS status;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	hdd_enter();
+
+	status = ucfg_pmo_ns_offload_check(hdd_ctx->psoc, trigger,
+					   adapter->session_id);
+	if (status != QDF_STATUS_SUCCESS) {
+		hdd_err("Flushing of NS offload not required");
+		goto out;
+	}
+
 	status = pmo_ucfg_flush_ns_offload_req(adapter->vdev);
+
 	if (status != QDF_STATUS_SUCCESS) {
 		hdd_err("Failed to flush NS Offload");
 		goto out;
@@ -876,6 +894,12 @@ void hdd_enable_arp_offload(struct hdd_adapter *adapter,
 	arp_req->vdev_id = adapter->session_id;
 	arp_req->trigger = trigger;
 
+	status = ucfg_pmo_check_arp_offload(psoc, trigger, adapter->session_id);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_info("ARP offload not required");
+		goto free_req;
+	}
+
 	ifa = hdd_get_ipv4_local_interface(adapter);
 	if (!ifa || !ifa->ifa_local) {
 		hdd_info("IP Address is not assigned");
@@ -910,8 +934,17 @@ void hdd_disable_arp_offload(struct hdd_adapter *adapter,
 		enum pmo_offload_trigger trigger)
 {
 	QDF_STATUS status;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	hdd_enter();
+
+	status = ucfg_pmo_check_arp_offload(hdd_ctx->psoc, trigger,
+					    adapter->session_id);
+	if (status != QDF_STATUS_SUCCESS) {
+		hdd_err("Flushing of ARP offload not required");
+		goto out;
+	}
+
 	status = pmo_ucfg_flush_arp_offload_req(adapter->vdev);
 	if (status != QDF_STATUS_SUCCESS) {
 		hdd_err("Failed to flush arp Offload");
@@ -1254,6 +1287,7 @@ QDF_STATUS hdd_wlan_shutdown(void)
 	}
 
 	hdd_bus_bw_compute_timer_stop(hdd_ctx);
+	hdd_set_connection_in_progress(false);
 	policy_mgr_clear_concurrent_session_count(hdd_ctx->psoc);
 
 	hdd_debug("Invoking packetdump deregistration API");
@@ -1736,7 +1770,6 @@ static int __wlan_hdd_cfg80211_suspend_wlan(struct wiphy *wiphy,
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 	p_cds_sched_context cds_sched_context = get_cds_sched_ctxt();
 	struct hdd_adapter *adapter;
-	struct hdd_scan_info *scan_info;
 	mac_handle_t mac_handle;
 	int rc;
 
@@ -1800,25 +1833,16 @@ static int __wlan_hdd_cfg80211_suspend_wlan(struct wiphy *wiphy,
 	ucfg_p2p_cleanup_tx_by_psoc(hdd_ctx->psoc);
 	ucfg_p2p_cleanup_roc_by_psoc(hdd_ctx->psoc);
 
-	/* Stop ongoing scan on each interface */
-	hdd_for_each_adapter(hdd_ctx, adapter) {
-		scan_info = &adapter->scan_info;
-
-		if (sme_neighbor_middle_of_roaming(mac_handle,
-		    adapter->session_id) ||
-		    hdd_is_roaming_in_progress(hdd_ctx)) {
-			hdd_err("Roaming in progress, do not allow suspend");
-			wlan_hdd_inc_suspend_stats(hdd_ctx,
-						   SUSPEND_FAIL_ROAM);
-			return -EAGAIN;
-		}
-
-		wlan_abort_scan(hdd_ctx->pdev, INVAL_PDEV_ID,
-				adapter->session_id, INVALID_SCAN_ID, false);
+	if (hdd_is_connection_in_progress(NULL, NULL)) {
+		hdd_err_rl("Connection is in progress, rejecting suspend");
+		return -EINVAL;
 	}
 
 	/* flush any pending powersave timers */
 	hdd_for_each_adapter(hdd_ctx, adapter) {
+		wlan_abort_scan(hdd_ctx->pdev, INVAL_PDEV_ID,
+				adapter->session_id, INVALID_SCAN_ID, false);
+
 		if (wlan_hdd_validate_session_id(adapter->session_id))
 			continue;
 
@@ -2037,23 +2061,32 @@ int wlan_hdd_cfg80211_set_power_mgmt(struct wiphy *wiphy,
  * @wiphy: Pointer to wiphy
  * @wdev: Pointer to network device
  * @type: TX power setting type
- * @dbm: TX power in dbm
+ * @mbm: TX power in mBm
  *
  * Return: 0 for success, non-zero for failure
  */
 static int __wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 					   struct wireless_dev *wdev,
 					   enum nl80211_tx_power_setting type,
-					   int dbm)
+					   int mbm)
 {
 	struct hdd_context *hdd_ctx = (struct hdd_context *) wiphy_priv(wiphy);
 	mac_handle_t mac_handle;
+	struct hdd_adapter *adapter;
 	struct qdf_mac_addr bssid = QDF_MAC_ADDR_BCAST_INIT;
-	struct qdf_mac_addr selfMac = QDF_MAC_ADDR_BCAST_INIT;
+	struct qdf_mac_addr selfmac;
 	QDF_STATUS status;
 	int errno;
+	int dbm;
 
 	hdd_enter();
+
+	if (!wdev) {
+		hdd_err("wdev is null, set tx power failed");
+		return -EIO;
+	}
+
+	adapter = WLAN_HDD_GET_PRIV_PTR(wdev->netdev);
 
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
@@ -2068,7 +2101,31 @@ static int __wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 	if (errno)
 		return errno;
 
+	if (adapter->device_mode == QDF_SAP_MODE ||
+	    adapter->device_mode == QDF_P2P_GO_MODE) {
+		qdf_copy_macaddr(&bssid, &adapter->mac_addr);
+	} else {
+		struct hdd_station_ctx *sta_ctx =
+			WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+
+		if (eConnectionState_Associated ==
+		    sta_ctx->conn_info.connState)
+			qdf_copy_macaddr(&bssid, &sta_ctx->conn_info.bssId);
+	}
+
+	qdf_copy_macaddr(&selfmac, &adapter->mac_addr);
+
 	mac_handle = hdd_ctx->mac_handle;
+
+	dbm = MBM_TO_DBM(mbm);
+
+	/*
+	 * the original implementation of this function expected power
+	 * values in dBm instead of mBm. If the conversion from mBm to
+	 * dBm is zero, then assume dBm was passed.
+	 */
+	if (!dbm)
+		dbm = mbm;
 
 	status = sme_cfg_set_int(mac_handle, WNI_CFG_CURRENT_TX_POWER_LEVEL,
 				 dbm);
@@ -2086,7 +2143,7 @@ static int __wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 	/* Fall through */
 	case NL80211_TX_POWER_LIMITED:
 	/* Limit TX power by the mBm parameter */
-		status = sme_set_max_tx_power(mac_handle, bssid, selfMac, dbm);
+		status = sme_set_max_tx_power(mac_handle, bssid, selfmac, dbm);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			hdd_err("Setting maximum tx power failed, %d", status);
 			return -EIO;
@@ -2109,14 +2166,14 @@ static int __wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 int wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 				  struct wireless_dev *wdev,
 				  enum nl80211_tx_power_setting type,
-				  int dbm)
+				  int mbm)
 {
 	int ret;
 
 	cds_ssr_protect(__func__);
 	ret = __wlan_hdd_cfg80211_set_txpower(wiphy,
 					      wdev,
-					      type, dbm);
+					      type, mbm);
 	cds_ssr_unprotect(__func__);
 
 	return ret;
@@ -2124,6 +2181,7 @@ int wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 
 #ifdef QCA_SUPPORT_CP_STATS
 static void wlan_hdd_get_tx_power(struct hdd_adapter *adapter, int *dbm)
+
 {
 	wlan_cfg80211_mc_cp_stats_get_tx_power(adapter->vdev, dbm);
 }
@@ -2134,6 +2192,114 @@ static void wlan_hdd_get_tx_power(struct hdd_adapter *adapter, int *dbm)
 	*dbm = adapter->hdd_stats.class_a_stat.max_pwr;
 }
 #endif
+
+#ifdef FEATURE_ANI_LEVEL_REQUEST
+static void hdd_get_ani_level_cb(struct wmi_host_ani_level_event *ani,
+				 uint8_t num, void *context)
+{
+	struct osif_request *request;
+	struct ani_priv *priv;
+	uint8_t min_recv_freqs = QDF_MIN(num, MAX_NUM_FREQS_FOR_ANI_LEVEL);
+
+	request = osif_request_get(context);
+	if (!request) {
+		hdd_err("Obsolete request");
+		return;
+	}
+
+	/* propagate response back to requesting thread */
+	priv = osif_request_priv(request);
+	priv->ani = qdf_mem_malloc(min_recv_freqs *
+				   sizeof(struct wmi_host_ani_level_event));
+	if (!priv->ani)
+		goto complete;
+
+	priv->num_freq = min_recv_freqs;
+	qdf_mem_copy(priv->ani, ani,
+		     min_recv_freqs * sizeof(struct wmi_host_ani_level_event));
+
+complete:
+	osif_request_complete(request);
+	osif_request_put(request);
+}
+
+/**
+ * wlan_hdd_get_ani_level_dealloc() - Dealloc mem allocated in priv data
+ * @priv: the priv data
+ *
+ * Return: None
+ */
+static void wlan_hdd_get_ani_level_dealloc(void *priv)
+{
+	struct ani_priv *ani = priv;
+
+	if (ani->ani)
+		qdf_mem_free(ani->ani);
+}
+
+QDF_STATUS wlan_hdd_get_ani_level(struct hdd_adapter *adapter,
+				  struct wmi_host_ani_level_event *ani,
+				  uint32_t *parsed_freqs,
+				  uint8_t num_freqs)
+{
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	int ret;
+	QDF_STATUS status;
+	void *cookie;
+	struct osif_request *request;
+	struct ani_priv *priv;
+	static const struct osif_request_params params = {
+		.priv_size = sizeof(*priv),
+		.timeout_ms = 1000,
+		.dealloc = wlan_hdd_get_ani_level_dealloc,
+	};
+
+	if (!hdd_ctx) {
+		hdd_err("Invalid HDD context");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	request = osif_request_alloc(&params);
+	if (!request) {
+		hdd_err("Request allocation failure");
+		return QDF_STATUS_E_NOMEM;
+	}
+	cookie = osif_request_cookie(request);
+
+	status = sme_get_ani_level(hdd_ctx->mac_handle, parsed_freqs,
+				   num_freqs, hdd_get_ani_level_cb, cookie);
+
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Unable to retrieve ani level");
+		goto complete;
+	} else {
+		/* request was sent -- wait for the response */
+		ret = osif_request_wait_for_response(request);
+		if (ret) {
+			hdd_err("SME timed out while retrieving ANI level");
+			status = QDF_STATUS_E_TIMEOUT;
+			goto complete;
+		}
+	}
+
+	priv = osif_request_priv(request);
+
+	qdf_mem_copy(ani, priv->ani, sizeof(struct wmi_host_ani_level_event) *
+		     priv->num_freq);
+
+complete:
+	/*
+	 * either we never sent a request, we sent a request and
+	 * received a response or we sent a request and timed out.
+	 * regardless we are done with the request.
+	 */
+	osif_request_put(request);
+
+	hdd_exit();
+	return status;
+}
+#endif
+
 /**
  * __wlan_hdd_cfg80211_get_txpower() - get TX power
  * @wiphy: Pointer to wiphy

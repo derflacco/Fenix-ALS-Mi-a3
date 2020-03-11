@@ -42,12 +42,8 @@ static ssize_t
 wlan_hdd_version_info_debugfs(struct hdd_context *hdd_ctx, uint8_t *buf,
 			      ssize_t buf_avail_len)
 {
-	uint32_t major_spid = 0, minor_spid = 0, siid = 0, crmid = 0, sub_id;
 	ssize_t length = 0;
 	int ret_val;
-
-	hdd_get_fw_version(hdd_ctx, &major_spid, &minor_spid, &siid, &crmid);
-	sub_id = (hdd_ctx->target_fw_vers_ext & 0xf0000000) >> 28;
 
 	ret_val = scnprintf(buf, buf_avail_len,
 			    "\nVERSION DETAILS\n");
@@ -62,10 +58,15 @@ wlan_hdd_version_info_debugfs(struct hdd_context *hdd_ctx, uint8_t *buf,
 
 	ret_val = scnprintf(buf + length, buf_avail_len - length,
 			    "Host Driver Version: %s\n"
-			    "Firmware Version: %d.%d.%d.%d.%d\n"
+			    "Firmware Version: %d.%d.%d.%d.%d.%d\n"
 			    "Hardware Version: %s\n",
 			    QWLAN_VERSIONSTR,
-			    major_spid, minor_spid, siid, crmid, sub_id,
+			    hdd_ctx->fw_version_info.major_spid,
+			    hdd_ctx->fw_version_info.minor_spid,
+			    hdd_ctx->fw_version_info.siid,
+			    hdd_ctx->fw_version_info.rel_id,
+			    hdd_ctx->fw_version_info.crmid,
+			    hdd_ctx->fw_version_info.sub_id,
 			    hdd_ctx->target_hw_name);
 	if (ret_val <= 0)
 		return length;
@@ -226,6 +227,10 @@ uint8_t *hdd_auth_type_str(uint32_t auth_type)
 		return "RSN PSK SHA256";
 	case eCSR_AUTH_TYPE_RSN_8021X_SHA256:
 		return "RSN 8021X SHA256";
+	case eCSR_AUTH_TYPE_FT_SAE:
+		return "FT SAE";
+	case eCSR_AUTH_TYPE_FT_SUITEB_EAP_SHA384:
+		return "FT Suite B SHA384";
 	case eCSR_NUM_OF_SUPPORT_AUTH_TYPE:
 		return "NUM OF SUPPORT AUTH TYPE";
 	case eCSR_AUTH_TYPE_FAILED:
@@ -314,7 +319,7 @@ wlan_hdd_connect_info_debugfs(struct hdd_adapter *adapter, uint8_t *buf,
 	ssize_t length = 0;
 	struct hdd_station_ctx *hdd_sta_ctx;
 	struct hdd_connection_info *conn_info;
-	uint32_t bit_rate;
+	uint32_t tx_bit_rate, rx_bit_rate;
 	int ret_val;
 
 	hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
@@ -346,7 +351,8 @@ wlan_hdd_connect_info_debugfs(struct hdd_adapter *adapter, uint8_t *buf,
 	}
 
 	conn_info = &hdd_sta_ctx->conn_info;
-	bit_rate = cfg80211_calculate_bitrate(&conn_info->txrate);
+	tx_bit_rate = cfg80211_calculate_bitrate(&conn_info->txrate);
+	rx_bit_rate = cfg80211_calculate_bitrate(&conn_info->rxrate);
 
 	if (length >= buf_avail_len) {
 		hdd_err("No sufficient buf_avail_len");
@@ -360,7 +366,8 @@ wlan_hdd_connect_info_debugfs(struct hdd_adapter *adapter, uint8_t *buf,
 			    "freq = %u\n"
 			    "ch_width = %s\n"
 			    "signal = %ddBm\n"
-			    "bit_rate = %u\n"
+			    "tx_bit_rate = %u\n"
+			    "rx_bit_rate = %u\n"
 			    "last_auth_type = %s\n"
 			    "dot11Mode = %s\n",
 			    conn_info->last_ssid.SSID.ssId,
@@ -370,7 +377,8 @@ wlan_hdd_connect_info_debugfs(struct hdd_adapter *adapter, uint8_t *buf,
 			    conn_info->freq,
 			    hdd_ch_width_str(conn_info->ch_width),
 			    conn_info->signal,
-			    bit_rate,
+			    tx_bit_rate,
+			    rx_bit_rate,
 			    hdd_auth_type_str(conn_info->last_auth_type),
 			    hdd_dot11_mode_str(conn_info->dot11Mode));
 
