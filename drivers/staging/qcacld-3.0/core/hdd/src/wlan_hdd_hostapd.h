@@ -94,20 +94,6 @@ QDF_STATUS wlan_hdd_get_channel_for_sap_restart(
 				uint8_t *sec_ch);
 #endif
 
-/**
- * wlan_hdd_set_sap_csa_reason() - Function to set
- * sap csa reason
- * @psoc: PSOC object information
- * @vdev_id: vdev id
- * @reason: reason to be updated
- *
- * This function sets the reason for SAP channel switch
- *
- * Return: None
- *
- */
-void wlan_hdd_set_sap_csa_reason(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
-				 uint8_t reason);
 eCsrEncryptionType
 hdd_translate_rsn_to_csr_encryption_type(uint8_t cipher_suite[4]);
 
@@ -221,48 +207,4 @@ QDF_STATUS wlan_hdd_config_acs(struct hdd_context *hdd_ctx,
 			       struct hdd_adapter *adapter);
 
 void hdd_sap_indicate_disconnect_for_sta(struct hdd_adapter *adapter);
-
-/**
- * wlan_hdd_disable_channels() - Cache the channels
- * and current state of the channels from the channel list
- * received in the command and disable the channels on the
- * wiphy and reg table.
- * @hdd_ctx: Pointer to hdd context
- *
- * Return: 0 on success, Error code on failure
- */
-int wlan_hdd_disable_channels(struct hdd_context *hdd_ctx);
-
-/*
- * hdd_check_and_disconnect_sta_on_invalid_channel() - Disconnect STA if it is
- * on invalid channel
- * @hdd_ctx: pointer to hdd context
- *
- * STA should be disconnected before starting the SAP if it is on indoor
- * channel.
- *
- * Return: void
- */
-void hdd_check_and_disconnect_sta_on_invalid_channel(
-						struct hdd_context *hdd_ctx);
-
-/**
- * hdd_stop_sap_due_to_invalid_channel() - to stop sap in case of invalid chnl
- * @work: pointer to work structure
- *
- * Let's say SAP detected RADAR and trying to select the new channel and if no
- * valid channel is found due to none of the channels are available or
- * regulatory restriction then SAP needs to be stopped. so SAP state-machine
- * will create a work to stop the bss
- *
- * stop bss has to happen through worker thread because radar indication comes
- * from FW through mc thread or main host thread and if same thread is used to
- * do stopbss then waiting for stopbss to finish operation will halt mc thread
- * to freeze which will trigger stopbss timeout. Instead worker thread can do
- * the stopbss operation while mc thread waits for stopbss to finish.
- *
- * Return: none
- */
-void hdd_stop_sap_due_to_invalid_channel(struct work_struct *work);
-
 #endif /* end #if !defined(WLAN_HDD_HOSTAPD_H) */

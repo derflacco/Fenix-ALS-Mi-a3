@@ -504,8 +504,6 @@ struct sap_acs_cfg {
 	uint8_t    end_ch;
 	uint8_t    *ch_list;
 	uint8_t    ch_list_count;
-	uint8_t    *master_ch_list;
-	uint8_t    master_ch_list_count;
 #ifdef FEATURE_WLAN_AP_AP_ACS_OPTIMIZE
 	uint8_t    skip_scan_status;
 	uint8_t    skip_scan_range1_stch;
@@ -554,31 +552,6 @@ enum  sap_acs_dfs_mode {
 	ACS_DFS_MODE_ENABLE,
 	ACS_DFS_MODE_DISABLE,
 	ACS_DFS_MODE_DEPRIORITIZE
-};
-
-/**
- * enum sap_csa_reason_code - SAP channel switch reason code
- * @CSA_REASON_UNKNOWN: Unknown reason
- * @CSA_REASON_STA_CONNECT_DFS_TO_NON_DFS: STA connection from DFS to NON DFS.
- * @CSA_REASON_USER_INITIATED: User initiated form north bound.
- * @CSA_REASON_PEER_ACTION_FRAME: Action frame received on sta iface.
- * @CSA_REASON_PRE_CAC_SUCCESS: Pre CAC success.
- * @CSA_REASON_CONCURRENT_STA_CHANGED_CHANNEL: concurrent sta changed channel.
- * @CSA_REASON_UNSAFE_CHANNEL: Unsafe channel.
- * @CSA_REASON_LTE_COEX: LTE coex.
- * @CSA_REASON_CONCURRENT_NAN_EVENT: NAN concurrency.
- *
- */
-enum sap_csa_reason_code {
-	CSA_REASON_UNKNOWN,
-	CSA_REASON_STA_CONNECT_DFS_TO_NON_DFS,
-	CSA_REASON_USER_INITIATED,
-	CSA_REASON_PEER_ACTION_FRAME,
-	CSA_REASON_PRE_CAC_SUCCESS,
-	CSA_REASON_CONCURRENT_STA_CHANGED_CHANNEL,
-	CSA_REASON_UNSAFE_CHANNEL,
-	CSA_REASON_LTE_COEX,
-	CSA_REASON_CONCURRENT_NAN_EVENT
 };
 
 typedef struct sap_config {
@@ -793,6 +766,14 @@ typedef struct sap_SoftapStats_s {
 	uint32_t rxBcntCRCok;
 	uint32_t rxRate;
 } tSap_SoftapStats, *tpSap_SoftapStats;
+
+#ifdef FEATURE_WLAN_CH_AVOID
+/* Store channel safety information */
+typedef struct {
+	uint16_t channelNumber;
+	bool isSafe;
+} sapSafeChannelType;
+#endif /* FEATURE_WLAN_CH_AVOID */
 
 /**
  * struct sap_context - per-BSS Context for SAP
@@ -1039,17 +1020,6 @@ uint16_t wlansap_check_cc_intf(struct sap_context *sap_ctx);
  */
 QDF_STATUS wlansap_set_mac_acl(struct sap_context *sap_ctx,
 			       tsap_config_t *pConfig);
-
-/**
- * sap_undo_acs() - Undo acs i.e free the allocated ch lists
- * @sap_ctx: pointer to the SAP context
- *
- * This function will free the memory allocated to the sap ctx channel list, acs
- * cfg ch list and master ch list.
- *
- * Return: None
- */
-void sap_undo_acs(struct sap_context *sap_context, struct sap_config *sap_cfg);
 
 /**
  * wlansap_disassoc_sta() - initiate disassociation of station.
@@ -1400,20 +1370,6 @@ static inline QDF_STATUS wlansap_set_dfs_nol(struct sap_context *sap_ctx,
 #endif
 
 /**
- * wlan_sap_set_dfs_pri_multiplier() - Set dfs_pri_multiplier
- * @hal:        global hal handle
- * @val:        value to set
- *
- * Return: none
- */
-#ifdef DFS_PRI_MULTIPLIER
-void wlan_sap_set_dfs_pri_multiplier(tHalHandle hal, uint32_t val);
-#else
-static inline void wlan_sap_set_dfs_pri_multiplier(tHalHandle hal, uint32_t val)
-{
-}
-#endif
-/**
  * wlan_sap_set_vendor_acs() - Set vendor specific acs in sap context
  * @sap_context: SAP context
  * @is_vendor_acs: if vendor specific acs is enabled
@@ -1516,33 +1472,6 @@ void wlansap_cleanup_cac_timer(struct sap_context *sap_ctx);
 void wlansap_set_stop_bss_inprogress(struct sap_context *sap_ctx,
 					bool in_progress);
 
-
-/**
- * wlansap_filter_ch_based_acs() -filter out channel based on acs
- * @sap_ctx: sap context
- * @ch_list: pointer to channel list
- * @ch_cnt: channel number of channel list
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS wlansap_filter_ch_based_acs(struct sap_context *sap_ctx,
-				       uint8_t *ch_list,
-				       uint32_t *ch_cnt);
-
-/**
- * wlansap_get_safe_channel_from_pcl_and_acs_range() - Get safe channel for SAP
- * restart
- * @sap_ctx: sap context
- *
- * Get a safe channel to restart SAP. PCL already takes into account the
- * unsafe channels. So, the PCL is validated with the ACS range to provide
- * a safe channel for the SAP to restart.
- *
- * Return: Channel number to restart SAP in case of success. In case of any
- * failure, the channel number returned is zero.
- */
-uint8_t
-wlansap_get_safe_channel_from_pcl_and_acs_range(struct sap_context *sap_ctx);
 #ifdef __cplusplus
 }
 #endif

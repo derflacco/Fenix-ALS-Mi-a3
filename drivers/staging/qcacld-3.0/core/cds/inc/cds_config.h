@@ -142,7 +142,7 @@ struct cds_config_info {
 	bool ip_tcp_udp_checksum_offload;
 	bool ce_classify_enabled;
 	uint8_t max_scan;
-#if defined(QCA_LL_TX_FLOW_CONTROL_V2) || defined(QCA_LL_PDEV_TX_FLOW_CONTROL)
+#ifdef QCA_LL_TX_FLOW_CONTROL_V2
 	uint32_t tx_flow_stop_queue_th;
 	uint32_t tx_flow_start_queue_offset;
 #endif
@@ -170,8 +170,6 @@ struct cds_config_info {
 	bool rps_enabled;
 	uint8_t delay_before_vdev_stop;
 	bool enable_peer_unmap_conf_support;
-	bool enable_tx_compl_tsf64;
-	bool enable_three_way_coex_config_legacy;
 };
 
 #ifdef WLAN_FEATURE_FILS_SK
