@@ -40,3 +40,10 @@ config ZRAM_WRITEBACK
 	 /sys/block/zramX/backing_dev.
 
 	 See zram.txt for more infomration.
+
+
+config ZRAM_SIZE_OVERRIDE
+	int "zram size to set from kernel"
+	range 1 8
+	default 2
+
