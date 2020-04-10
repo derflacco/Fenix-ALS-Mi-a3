@@ -64,5 +64,6 @@ fi;
 # end ramdisk changes
 
 write_boot;
+  ui_print " "; ui_print "The world is full of good bois. If you can't find one, be one."
 
 ## end install
