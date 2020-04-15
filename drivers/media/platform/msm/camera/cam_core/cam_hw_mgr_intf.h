@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -144,11 +144,11 @@ struct cam_hw_stop_args {
  * struct cam_hw_mgr_dump_pf_data - page fault debug data
  *
  * packet:     pointer to packet
- * ctx_id:     context id
+ * ctx:        pointer to cam context
  */
 struct cam_hw_mgr_dump_pf_data {
-	void    *packet;
-	uint32_t ctx_id;
+	void *packet;
+	void *ctx;
 };
 
 /**
@@ -211,6 +211,7 @@ struct cam_hw_stream_setttings {
  * @num_out_map_entries:   Number of out map entries
  * @priv:                  Private pointer
  * @request_id:            Request ID
+ * @reapply                True if reapplying after bubble
  *
  */
 struct cam_hw_config_args {
@@ -222,6 +223,7 @@ struct cam_hw_config_args {
 	void                           *priv;
 	uint64_t                        request_id;
 	bool                            init_packet;
+	bool                            reapply;
 };
 
 /**
