@@ -20,7 +20,7 @@ KERNEL_DIR=$PWD
 REPACK_DIR=$KERNEL_DIR/zip
 OUT=$KERNEL_DIR/output
 ZIP_NAME="$VERSION"-"$DATE"
-VERSION="Fenix-"
+VERSION="Fenix-Q-"
 DATE=$(date +%Y%m%d-%H%M)
 
 export ARCH=arm64
