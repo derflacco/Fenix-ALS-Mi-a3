@@ -30,6 +30,13 @@ ramdisk_compression=auto;
 ## AnyKernel install
 dump_boot;
 
+# patch build.prop, enable psi
+mount -o rw,remount /system
+
+patch_prop /system/build.prop "ro.lmk.use_psi" "true"
+
+ui_print "build.prop patched!"
+
 # remove old root patch avoidance hack
 patch_cmdline "skip_override" "";
 
