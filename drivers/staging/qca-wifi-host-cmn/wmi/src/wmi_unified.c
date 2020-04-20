@@ -2376,9 +2376,9 @@ void *wmi_unified_attach(void *scn_handle,
 	soc->wmi_pdev[0] = wmi_handle;
 
 	wmi_wbuff_register(wmi_handle);
-
+#ifdef WLAN_DEBUG
 	wmi_hang_event_notifier_register(wmi_handle);
-
+#endif
 	return wmi_handle;
 
 error:
@@ -2400,9 +2400,9 @@ void wmi_unified_detach(struct wmi_unified *wmi_handle)
 	wmi_buf_t buf;
 	struct wmi_soc *soc;
 	uint8_t i;
-
+#ifdef WLAN_DEBUG
 	wmi_hang_event_notifier_unregister();
-
+#endif
 	wmi_wbuff_deregister(wmi_handle);
 
 	soc = wmi_handle->soc;
