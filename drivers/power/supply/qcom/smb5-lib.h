@@ -504,6 +504,7 @@ struct smb_charger {
 	bool			ok_to_pd;
 	bool			typec_legacy;
 	bool			typec_irq_en;
+	bool			typec_role_swap_failed;
 
 	/* cached status */
 	bool			system_suspend_supported;
@@ -575,6 +576,7 @@ struct smb_charger {
 	int			last_cc_soc;
 	int			dr_mode;
 	int			old_batt_status;
+	int			term_vbat_uv;
 	int			usbin_forced_max_uv;
 	int			init_thermal_ua;
 	u32			comp_clamp_level;
