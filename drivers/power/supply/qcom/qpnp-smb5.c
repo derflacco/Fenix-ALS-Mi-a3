@@ -2356,17 +2356,6 @@ static int smb5_configure_typec(struct smb_charger *chg)
 			return rc;
 		}
 
-	rc = smblib_masked_write(chg, TYPE_C_DEBUG_ACCESS_SINK_REG,
-				 TYPEC_DEBUG_ACCESS_MODE_MASK,
-				 0x17);
-	if (rc < 0) {
-		dev_err(chg->dev,
-			"Couldn't configure 0x154A rc=%d\n",
-				rc);
-		return rc;
-	}
-
-	if (chg->smb_version != PMI632_SUBTYPE) {
 		rc = smblib_masked_write(chg, USBIN_LOAD_CFG_REG,
 				USBIN_IN_COLLAPSE_GF_SEL_MASK |
 				USBIN_AICL_STEP_TIMING_SEL_MASK,
