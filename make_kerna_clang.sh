@@ -28,6 +28,13 @@ export SUBARCH=arm64
 export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton-clang-20200510/lib/
 export USE_CCACHE=1
 
+make clean && make mrproper
+PATH="/home/derflacco/toolchains/proton-clang-20200510/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
+make O=output ARCH=arm64 vendor/fenix_defconfig
+make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
+
+
+
 make_zip()
 {
                 cd $REPACK_DIR
@@ -37,6 +44,7 @@ make_zip()
                 rm $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/modules.order
                 #cp $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
                 cp $KERNEL_DIR/output/arch/arm64/boot/Image.gz-dtb $REPACK_DIR/
+                cp $KERNEL_DIR/output/arch/arm64/boot/dtbo.img $REPACK_DIR/
 		FINAL_ZIP="Als-Walt-${VERSION}-${DATE}.zip"
         zip -r9 "${FINAL_ZIP}" *
 		cp *.zip $OUT
@@ -47,11 +55,6 @@ make_zip()
 		rm output/arch/arm64/boot/Image.gz-dtb
 }
 
-make clean && make mrproper
-PATH="/home/derflacco/toolchains/proton-clang-20200510/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
-make O=output ARCH=arm64 vendor/fenix_defconfig
-make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
-
 
 make_zip
 
@@ -60,6 +63,7 @@ DIFF=$(($BUILD_END - $BUILD_START))
 rm -rf zip/kernel
 rm -rf zip/Image.gz-dtb
 rm -rf zip/dtbs
+rm -rf zip/dtbo.img
 echo -e ""
 echo -e ""
 echo -e "Be a good boi!"
