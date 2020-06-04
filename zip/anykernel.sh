@@ -33,7 +33,7 @@ dump_boot;
 # patch build.prop, enable psi
 mount -o rw,remount /system
 
-patch_prop /system/build.prop "ro.lmk.use_psi" "false"
+patch_prop /system/build.prop "ro.lmk.use_psi" "true"
 
 ui_print "build.prop patched!"
 
