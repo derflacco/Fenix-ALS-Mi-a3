@@ -3360,7 +3360,7 @@ EXPORT_SYMBOL(kgsl_pwr_limits_get_freq);
 void kgsl_pwrctrl_set_default_gpu_pwrlevel(struct kgsl_device *device)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
-	unsigned int new_level = pwr->num_pwrlevels - 1;
+	unsigned int new_level = pwr->default_pwrlevel;
 	unsigned int old_level = pwr->active_pwrlevel;
 
 	/*
