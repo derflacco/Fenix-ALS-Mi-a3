@@ -9014,6 +9014,7 @@ void wlan_hdd_display_tx_rx_histogram(struct hdd_context *hdd_ctx)
 		hdd_ctx->config->tcp_tx_high_tput_thres);
 #endif
 
+
 	hdd_debug("Total entries: %d Current index: %d",
 		NUM_TX_RX_HISTOGRAM, hdd_ctx->hdd_txrx_hist_idx);
 
@@ -9036,8 +9037,9 @@ void wlan_hdd_display_tx_rx_histogram(struct hdd_context *hdd_ctx)
 					hdd_ctx->hdd_txrx_hist[i].
 						next_tx_level));
 	}
-}
 
+}
+#endif
 /**
  * wlan_hdd_clear_tx_rx_histogram() - clear tx rx histogram
  * @hdd_ctx: hdd context
