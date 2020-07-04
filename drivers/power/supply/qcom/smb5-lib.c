@@ -3490,21 +3490,23 @@ int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
 		return smblib_read_mid_voltage_chan(chg, val);
 	else
 		rc = smblib_read_usbin_voltage_chan(chg, val);
-		if (rc < 0) {
+	if (rc < 0) {
 			smblib_err(chg, "Failed to read USBIN over vadc, rc=%d\n", rc);
 			ret = rc;
 		}
 
 	restore_adc_config:
 		 /* Restore ADC channel config */
-		if (chg->wa_flags & USBIN_ADC_WA)
+		if (chg->wa_flags & USBIN_ADC_WA) {
 			rc = smblib_write(chg, BATIF_ADC_CHANNEL_EN_REG, reg);
 			if (rc < 0)
 				smblib_err(chg, "Couldn't write ADC config rc=%d\n",
 							rc);
+                }
 	unlock:
 		mutex_unlock(&chg->adc_lock);
 		return ret;
+                
 }
 
 int smblib_get_prop_vph_voltage_now(struct smb_charger *chg,
