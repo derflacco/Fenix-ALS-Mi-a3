@@ -3168,9 +3168,11 @@ int hdd_wlan_dump_stats(struct hdd_adapter *adapter, int value)
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	switch (value) {
+#ifdef WLAN_DEBUG
 	case CDP_TXRX_HIST_STATS:
 		wlan_hdd_display_tx_rx_histogram(hdd_ctx);
 		break;
+#endif
 	case CDP_HDD_NETIF_OPER_HISTORY:
 		wlan_hdd_display_adapter_netif_queue_history(adapter);
 		break;
