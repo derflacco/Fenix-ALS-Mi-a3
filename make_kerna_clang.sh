@@ -29,6 +29,7 @@ export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton-clang-20200613/lib/
 export USE_CCACHE=1
 defconfig=/vendor/fenix_defconfig
 
+make clean && make mrproper
 
 PATH="/home/derflacco/toolchains/proton-clang-20200613/bin:$PATH"
 export CROSS_COMPILE=aarch64-linux-gnu-
