@@ -18,11 +18,6 @@ extern struct reciprocal_value schedtune_spc_rdiv;
 /* We hold schedtune boost in effect for at least this long */
 #define SCHEDTUNE_BOOST_HOLD_NS 50000000ULL
 
-static DEFINE_MUTEX(disable_schedtune_boost_mutex);
-bool disable_boost = false;
-static struct schedtune *getSchedtune(char *st_name);
-int disable_schedtune_boost(char *st_name, bool disable);
-
 /*
  * EAS scheduler tunables for task groups.
  */
@@ -62,9 +57,6 @@ struct schedtune {
 	/* Hint to bias scheduling of tasks on that SchedTune CGroup
 	 * towards idle CPUs */
 	int prefer_idle;
-
-	/* Used to store current boost value for disable_schedtune_boost() */
-	int cached_boost;
 };
 
 static inline struct schedtune *css_st(struct cgroup_subsys_state *css)
@@ -101,7 +93,6 @@ root_schedtune = {
 	.colocate_update_disabled = false,
 #endif
 	.prefer_idle = 0,
-	.cached_boost = 0,
 };
 
 /*
@@ -634,14 +625,7 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	if (boost < 0 || boost > 100)
 		return -EINVAL;
 
-	/* Just cache and exit if boost is currently disabled */
-	if (disable_boost) {
-		st->cached_boost = boost;
-		return 0;
-	}
-
 	st->boost = boost;
-	st->cached_boost = boost;
 
 	/* Update CPU boost */
 	schedtune_boostgroup_update(st->idx, st->boost);
@@ -866,54 +850,6 @@ schedtune_init_cgroups(void)
 		BOOSTGROUPS_COUNT);
 
 	schedtune_initialized = true;
-}
-
-static struct schedtune *getSchedtune(char *st_name)
-{
-	int idx;
-
-	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
-		char name_buf[NAME_MAX + 1];
-		struct schedtune *st = allocated_group[idx];
-
-		if (!st) {
-			pr_warn("SCHEDTUNE: Could not find %s\n", st_name);
-			break;
-		}
-
-		cgroup_name(st->css.cgroup, name_buf, sizeof(name_buf));
-		if (strncmp(name_buf, st_name, strlen(st_name)) == 0)
-			return st;
-	}
-
-	return NULL;
-}
-
-int disable_schedtune_boost(char *st_name, bool disable)
-{
-	int cur_cached_boost;
-	struct schedtune *st = getSchedtune(st_name);
-
-	if (!st)
-		return -EINVAL;
-
-	mutex_lock(&disable_schedtune_boost_mutex);
-
-	if (disable) {
-		cur_cached_boost = st->cached_boost;
-		/* Set boost to 0 */
-		boost_write(&st->css, NULL, 0);
-		disable_boost = disable;
-		st->cached_boost = cur_cached_boost;
-	} else {
-		disable_boost = disable;
-		/* Restore old value */
-		boost_write(&st->css, NULL, st->cached_boost);
-	}
-
-	mutex_unlock(&disable_schedtune_boost_mutex);
-
-	return 0;
 }
 
 /*
