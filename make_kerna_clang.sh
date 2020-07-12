@@ -35,11 +35,7 @@ PATH="/home/derflacco/toolchains/proton-clang-20200613/bin:$PATH"
 export CROSS_COMPILE=aarch64-linux-gnu-
 make $defconfig CC=clang O=output/
 
-make -j$(nproc --all) 
-                NM=llvm-nm \
-		OBJCOPY=llvm-objcopy \
-                LD=ld.lld \ 
-                CC="ccache clang -fcolor-diagnostics -Qunused-arguments" O=output/
+make -j$(nproc --all) NM="llvm-nm" OBJCOPY="llvm-objcopy" LD="ld.lld"  CC="ccache clang -fcolor-diagnostics -Qunused-arguments" O=output/
 
 make_zip()
 {
