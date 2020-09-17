@@ -20,12 +20,21 @@ KERNEL_DIR=$PWD
 REPACK_DIR=$KERNEL_DIR/zip
 OUT=$KERNEL_DIR/output
 ZIP_NAME="$VERSION"-"$DATE"
-VERSION="Fenix"
+VERSION="Fenix-"
 DATE=$(date +%Y%m%d-%H%M)
 
 export ARCH=arm64
 export SUBARCH=arm64
+export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton-clang-20200913/lib/
 export USE_CCACHE=1
+defconfig=/vendor/fenix_defconfig
+
+
+PATH="/home/derflacco/toolchains/proton-clang-20200913/bin:$PATH"
+export CROSS_COMPILE=aarch64-linux-gnu-
+make $defconfig CC=clang O=output/
+
+make -j$(nproc --all) CC="ccache clang -fcolor-diagnostics -Qunused-arguments" O=output/
 
 make_zip()
 {
@@ -36,7 +45,9 @@ make_zip()
                 rm $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/modules.order
                 #cp $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/sd* $REPACK_DIR/dtbs/
                 cp $KERNEL_DIR/output/arch/arm64/boot/Image.gz-dtb $REPACK_DIR/
-		FINAL_ZIP="Als-${VERSION}-${DATE}.zip"
+                cp $KERNEL_DIR/output/arch/arm64/boot/dtbo.img $REPACK_DIR/
+                cp $KERNEL_DIR/output/arch/arm64/boot/dts/qcom/trinket.dtb $REPACK_DIR/
+		FINAL_ZIP="Q-${VERSION}-${DATE}.zip"
         zip -r9 "${FINAL_ZIP}" *
 		cp *.zip $OUT
 		rm *.zip
@@ -44,12 +55,11 @@ make_zip()
                 rm -rf dtbs
 		cd $KERNEL_DIR
 		rm output/arch/arm64/boot/Image.gz-dtb
+		rm output/arch/arm64/boot/dtbo.img
+		rm output/arch/arm64/boot/dts/qcom/trinket.dtb
 }
 
-make clean && make mrproper
-PATH="/home/derflacco/toolchains/linux-x86-refs_heads_master-clang-r365631c/bin:/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin${PATH}"
-make O=output ARCH=arm64 vendor/fenix_defconfig
-make -j$(nproc --all) O=output ARCH=arm64 CC="ccache clang -fcolor-diagnostics -Qunused-arguments" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="/home/derflacco/toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
+
 
 
 make_zip
@@ -58,6 +68,8 @@ BUILD_END=$(date +"%s")
 DIFF=$(($BUILD_END - $BUILD_START))
 rm -rf zip/kernel
 rm -rf zip/Image.gz-dtb
+rm -rf zip/dtbo.img
+rm -rf zip/trinket.dtb
 rm -rf zip/dtbs
 echo -e ""
 echo -e ""
