@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, The Linux Foundation.All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation.All rights reserved.
  * Copyright (C) 2020 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -118,12 +118,17 @@ struct dsi_display_boot_param {
  * struct dsi_display_clk_info - dsi display clock source information
  * @src_clks:          Source clocks for DSI display.
  * @mux_clks:          Mux clocks used for DFPS.
- * @shadow_clks:       Used for DFPS.
+ * @shadow_clks:       Used for D-phy clock switch
+ * @shadow_cphy_clks:  Used for C-phy clock switch
+ * @xo_clks:           XO clocks for DSI display
  */
 struct dsi_display_clk_info {
 	struct dsi_clk_link_set src_clks;
 	struct dsi_clk_link_set mux_clks;
+	struct dsi_clk_link_set cphy_clks;
 	struct dsi_clk_link_set shadow_clks;
+	struct dsi_clk_link_set shadow_cphy_clks;
+	struct dsi_clk_link_set xo_clks;
 };
 
 /**
@@ -178,6 +183,7 @@ struct dsi_display_ext_bridge {
  * @cmdline_topology: Display topology shared from kernel command line.
  * @cmdline_timing:   Display timing shared from kernel command line.
  * @is_tpg_enabled:   TPG state.
+ * @poms_pending;      Flag indicating the pending panel operating mode switch.
  * @ulps_enabled:     ulps state.
  * @clamp_enabled:    clamp state.
  * @phy_idle_power_off:   PHY power state.
@@ -240,6 +246,7 @@ struct dsi_display {
 	int cmdline_timing;
 	int esd_error_flag_gpio; 
 	bool is_tpg_enabled;
+	bool poms_pending;
 	bool ulps_enabled;
 	bool clamp_enabled;
 	bool phy_idle_power_off;
@@ -372,7 +379,7 @@ int dsi_display_get_mode_count(struct dsi_display *display, u32 *count);
  * dsi_display_get_modes() - get modes supported by display
  * @display:            Handle to display.
  * @modes;              Output param, list of DSI modes. Number of modes matches
- *                      count returned by dsi_display_get_mode_count
+ *                      count got from display->panel->num_display_modes;
  *
  * Return: error code.
  */
@@ -679,6 +686,15 @@ int dsi_display_set_power(struct drm_connector *connector,
 int dsi_display_pre_kickoff(struct drm_connector *connector,
 		struct dsi_display *display,
 		struct msm_display_kickoff_params *params);
+/*
+ * dsi_display_pre_commit - program pre commit features
+ * @display: Pointer to private display structure
+ * @params: Parameters for pre commit time programming
+ * Returns: Zero on success
+ */
+int dsi_display_pre_commit(void *display,
+		struct msm_display_conn_params *params);
+
 /**
  * dsi_display_get_dst_format() - get dst_format from DSI display
  * @connector:        Pointer to drm connector structure

@@ -8,12 +8,16 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8994-angler-rev-101.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= msm8996-mtp.dtb
 
 dtb-$(CONFIG_ARCH_QCS403) += qcs403-iot-sku1.dtb \
+			qcs403-iot-sku2.dtb \
 			qcs403-iot-sku3.dtb \
 			qcs403-iot-sku5.dtb \
 			qcs401-iot-sku5.dtb \
+			qcs404-iot-sku2.dtb \
 			qcs404-iot-sku3.dtb \
 			qcs404-iot-sku5.dtb \
-			qcs404-iot-sku6.dtb
+			qcs404-iot-sku6.dtb \
+			qcs405-iot-sku1.dtb \
+			qcs407-iot-sku1.dtb
 
 dtb-$(CONFIG_ARCH_QCS405) += qcs405-iot-sku1.dtb \
 		qcs407-iot-sku1.dtb \
@@ -50,6 +54,9 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 		sm8150-sdxprairie-mtp-overlay.dtbo \
 		sm8150-sdxprairie-v2-cdp-overlay.dtbo \
 		sm8150-sdxprairie-v2-mtp-overlay.dtbo \
+		sm8150-sdxprairie-v3-mtp-overlay.dtbo \
+		sm8150-marmot-cdp-overlay.dtbo \
+		sm8150-marmot-mtp-overlay.dtbo \
 		sm8150-hdk-overlay.dtbo
 
 sm8150-cdp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
@@ -72,6 +79,9 @@ sm8150-sdxprairie-cdp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb 
 sm8150-sdxprairie-mtp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
 sm8150-sdxprairie-v2-cdp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
 sm8150-sdxprairie-v2-mtp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
+sm8150-sdxprairie-v3-mtp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
+sm8150-marmot-cdp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
+sm8150-marmot-mtp-overlay.dtbo-base := sm8150.dtb sm8150-v2.dtb sm8150p.dtb sm8150p-v2.dtb
 else
 dtb-$(CONFIG_ARCH_SM8150)	+= sm8150-rumi.dtb \
 	sm8150-mtp.dtb \
@@ -238,7 +248,13 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 		atoll-qrd-overlay.dtbo\
 		atoll-wcd937x-idp-overlay.dtbo\
 		atoll-usbc-idp-overlay.dtbo\
-		atoll-rumi-overlay.dtbo
+		atoll-rumi-overlay.dtbo\
+		atollp-idp-overlay.dtbo\
+		atollp-atp-overlay.dtbo\
+		atollp-qrd-overlay.dtbo\
+		atoll-ab-idp-overlay.dtbo\
+		atoll-ab-atp-overlay.dtbo\
+		atoll-ab-qrd-overlay.dtbo
 
 atoll-idp-overlay.dtbo-base := atoll.dtb
 atoll-atp-overlay.dtbo-base := atoll.dtb
@@ -246,28 +262,49 @@ atoll-qrd-overlay.dtbo-base := atoll.dtb
 atoll-rumi-overlay.dtbo-base := atoll.dtb
 atoll-wcd937x-idp-overlay.dtbo-base := atoll.dtb
 atoll-usbc-idp-overlay.dtbo-base := atoll.dtb
+atollp-idp-overlay.dtbo-base := atollp.dtb
+atollp-atp-overlay.dtbo-base := atollp.dtb
+atollp-qrd-overlay.dtbo-base := atollp.dtb
+atoll-ab-idp-overlay.dtbo-base := atoll-ab.dtb
+atoll-ab-atp-overlay.dtbo-base := atoll-ab.dtb
+atoll-ab-qrd-overlay.dtbo-base := atoll-ab.dtb
 else
 dtb-$(CONFIG_ARCH_ATOLL)	+= atoll-idp.dtb\
 	atoll-atp.dtb\
 	atoll-qrd.dtb\
 	atoll-wcd937x-idp.dtb\
 	atoll-usbc-idp.dtb\
-	atoll-rumi.dtb
+	atoll-rumi.dtb\
+	atollp-idp.dtb\
+	atollp-atp.dtb\
+	atollp-qrd.dtb\
+	atoll-ab-idp.dtb\
+	atoll-ab-atp.dtb\
+	atoll-ab-qrd.dtb
 endif
 
 dtb-$(CONFIG_ARCH_SDXPRAIRIE) += sdxprairie-rumi.dtb \
 	sdxprairie-cdp.dtb \
-	sdxprairie-dsda-cdp.dtb \
-	sdxprairie-mtp.dtb \
-	sdxprairie-pcie-ep-mtp.dtb \
-	sdxprairie-mtp-cpe.dtb \
-	sdxprairie-cdp-cpe.dtb \
 	sdxprairie-cdp-256.dtb \
+	sdxprairie-cdp-cpe.dtb \
+	sdxprairie-cdp-v1.1-cpe.dtb \
+	sdxprairie-dsda-cdp.dtb \
+	sdxprairie-v2-cdp.dtb \
+	sdxprairie-mtp.dtb \
 	sdxprairie-mtp-256.dtb \
 	sdxprairie-mtp-aqc.dtb \
+	sdxprairie-mtp-cpe.dtb \
+	sdxprairie-mtp-le-cpe.dtb \
+	sdxprairie-mtp-v1.1.dtb \
+	sdxprairie-mtp-v1.1-cpe.dtb \
 	sdxprairie-dsda-mtp.dtb \
-	sdxprairie-v2-cdp.dtb \
+	sdxprairie-pcie-ep-mtp.dtb \
 	sdxprairie-v2-mtp.dtb \
+	sdxprairie-v2-mtp-cpe.dtb \
+	sdxprairie-v2-mtp-le-cpe.dtb \
+	sdxprairie-v2-mtp-v1.1.dtb \
+	sdxprairie-v2-mtp-v1.1-cpe.dtb \
+	sdxprairie-v2-pcie-ep-mtp.dtb \
 	sa515m-ccard.dtb \
 	sa515m-ccard-pcie-ep.dtb \
 	sa515m-ccard-usb-ep.dtb
@@ -282,6 +319,14 @@ targets += $(addprefix ../, $(dtb-y))
 $(obj)/../%.dtb: $(src)/%.dts FORCE
 	$(call if_changed_dep,dtc)
 
+ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+$(obj)/%.dtbo:$(src)/../../../../arm64/boot/dts/qcom/%.dts FORCE
+	$(call if_changed_dep,dtc)
+	$(call if_changed,dtbo_verify)
+
+dtbs: $(addprefix $(obj)/,$(dtb-y)) $(addprefix $(obj)/,$(dtbo-y))
+else
 dtbs: $(addprefix $(obj)/../,$(dtb-y))
+endif
 endif
 clean-files	:= *.dtb *.dtbo

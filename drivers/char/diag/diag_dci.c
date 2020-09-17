@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1817,9 +1817,9 @@ static int diag_dci_process_apps_pkt(struct diag_pkt_header_t *pkt_header,
 				     unsigned char *req_buf, int req_len,
 				     int tag, int pkt_header_len)
 {
-	uint8_t cmd_code, subsys_id, i, goto_download = 0;
+	uint8_t cmd_code = 0, subsys_id = 0, i, goto_download = 0;
 	uint8_t header_len = sizeof(struct diag_dci_pkt_header_t);
-	uint16_t ss_cmd_code;
+	uint16_t ss_cmd_code = 0;
 	uint32_t write_len = 0;
 	unsigned char *dest_buf = driver->apps_dci_buf;
 	unsigned char *payload_ptr = driver->apps_dci_buf + header_len;
@@ -3136,6 +3136,7 @@ fail_alloc:
 		kfree(new_entry);
 		new_entry = NULL;
 	}
+	put_task_struct(current);
 	mutex_unlock(&driver->dci_mutex);
 	return DIAG_DCI_NO_REG;
 }

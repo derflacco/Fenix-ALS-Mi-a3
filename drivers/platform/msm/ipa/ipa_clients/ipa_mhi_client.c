@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, 2017-2019 The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, 2017-2020 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -63,8 +63,8 @@
 #define IPA_MHI_SUSPEND_SLEEP_MIN 900
 #define IPA_MHI_SUSPEND_SLEEP_MAX 1100
 
-#define IPA_MHI_MAX_UL_CHANNELS 1
-#define IPA_MHI_MAX_DL_CHANNELS 2
+#define IPA_MHI_MAX_UL_CHANNELS 2
+#define IPA_MHI_MAX_DL_CHANNELS 4
 
 /* bit #40 in address should be asserted for MHI transfers over pcie */
 #define IPA_MHI_CLIENT_HOST_ADDR_COND(addr) \
@@ -1474,7 +1474,8 @@ static int ipa_mhi_reset_dl_channel(struct ipa_mhi_channel_ctx *channel)
 	return 0;
 }
 
-static int ipa_mhi_reset_channel(struct ipa_mhi_channel_ctx *channel)
+static int ipa_mhi_reset_channel(struct ipa_mhi_channel_ctx *channel,
+				 bool update_state)
 {
 	int res;
 
@@ -1490,7 +1491,8 @@ static int ipa_mhi_reset_channel(struct ipa_mhi_channel_ctx *channel)
 
 	channel->state = IPA_HW_MHI_CHANNEL_STATE_DISABLE;
 
-	if (ipa_get_transport_type() == IPA_TRANSPORT_TYPE_GSI) {
+	if ((ipa_get_transport_type() == IPA_TRANSPORT_TYPE_GSI) &&
+		update_state) {
 		res = ipa_mhi_read_write_host(IPA_MHI_DMA_TO_HOST,
 			&channel->state, channel->channel_context_addr +
 				offsetof(struct ipa_mhi_ch_ctx, chstate),
@@ -1654,7 +1656,7 @@ int ipa_mhi_connect_pipe(struct ipa_mhi_connect_params *in, u32 *clnt_hdl)
 	return 0;
 fail_connect_pipe:
 	mutex_unlock(&mhi_client_general_mutex);
-	ipa_mhi_reset_channel(channel);
+	ipa_mhi_reset_channel(channel, true);
 fail_start_channel:
 	IPA_ACTIVE_CLIENTS_DEC_EP(in->sys.client);
 	return -EPERM;
@@ -1702,7 +1704,7 @@ int ipa_mhi_disconnect_pipe(u32 clnt_hdl)
 
 	IPA_ACTIVE_CLIENTS_INC_EP(ipa_get_client_mapping(clnt_hdl));
 
-	res = ipa_mhi_reset_channel(channel);
+	res = ipa_mhi_reset_channel(channel, false);
 	if (res) {
 		IPA_MHI_ERR("ipa_mhi_reset_channel failed %d\n", res);
 		goto fail_reset_channel;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -108,6 +108,8 @@ static void qrtr_mhi_dev_read(struct qrtr_mhi_dev_ep *qep)
 				bytes_read);
 			return;
 		}
+		if (bytes_read == 0)
+			return;
 
 		rc = qrtr_endpoint_post(&qep->ep, req.buf, req.transfer_len);
 		if (rc == -EINVAL)
@@ -157,15 +159,9 @@ static int qrtr_mhi_dev_open_channels(struct qrtr_mhi_dev_ep *qep)
 
 static void qrtr_mhi_dev_close_channels(struct qrtr_mhi_dev_ep *qep)
 {
-	int rc;
 
-	rc = mhi_dev_close_channel(qep->in);
-	if (rc < 0)
-		dev_err(qep->dev, "failed to close in channel %d\n", rc);
-
-	rc = mhi_dev_close_channel(qep->out);
-	if (rc < 0)
-		dev_err(qep->dev, "failed to close out channel %d\n", rc);
+	mhi_dev_close_channel(qep->in);
+	mhi_dev_close_channel(qep->out);
 }
 
 static void qrtr_mhi_dev_state_cb(struct mhi_dev_client_cb_data *cb_data)
@@ -226,8 +222,11 @@ static int qrtr_mhi_dev_probe(struct platform_device *pdev)
 	mutex_init(&qep->out_lock);
 	init_completion(&qep->out_tre);
 	qep->ep.xmit = qrtr_mhi_dev_send;
+	/* HOST init TX first followed by RX, so register for endpoint TX
+	 * which makes both channel ready by checking one channel state.
+	 */
 	rc = mhi_register_state_cb(qrtr_mhi_dev_state_cb, qep,
-				   QRTR_MHI_DEV_IN);
+				   QRTR_MHI_DEV_OUT);
 	if (rc)
 		return rc;
 

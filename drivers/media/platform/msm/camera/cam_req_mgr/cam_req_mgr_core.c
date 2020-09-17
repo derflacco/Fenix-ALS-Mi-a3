@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -51,6 +51,7 @@ void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->initial_skip = true;
 	link->sof_timestamp = 0;
 	link->prev_sof_timestamp = 0;
+	link->num_sof_src = 0;
 }
 
 void cam_req_mgr_handle_core_shutdown(void)
@@ -356,7 +357,8 @@ static void __cam_req_mgr_reset_req_slot(struct cam_req_mgr_core_link *link,
 
 	/* Check if CSL has already pushed new request*/
 	if (slot->status == CRM_SLOT_STATUS_REQ_ADDED ||
-		in_q->last_applied_idx == idx)
+		in_q->last_applied_idx == idx ||
+		idx < 0)
 		return;
 
 	/* Reset input queue slot */
@@ -1007,6 +1009,7 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 		CAM_DBG(CAM_CRM, "Req: %lld not found on link: %x [other link]",
 			req_id, sync_link->link_hdl);
 		sync_ready = false;
+		return -EAGAIN;
 	}
 
 	if ((sync_link->req.in_q->slot[sync_slot_idx].status !=
@@ -1310,10 +1313,6 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 			if (slot->req_id > 0) {
 				last_app_idx = in_q->last_applied_idx;
 				in_q->last_applied_idx = idx;
-				if (abs(last_app_idx - idx) >=
-					reset_step + 1)
-					__cam_req_mgr_reset_req_slot(link,
-						last_app_idx);
 			}
 
 			__cam_req_mgr_dec_idx(
@@ -2202,6 +2201,12 @@ int cam_req_mgr_process_error(void *priv, void *data)
 			__cam_req_mgr_tbl_set_all_skip_cnt(&link->req.l_tbl);
 			in_q->rd_idx = idx;
 			in_q->slot[idx].status = CRM_SLOT_STATUS_REQ_ADDED;
+			if (link->sync_link) {
+				in_q->slot[idx].sync_mode = 0;
+				__cam_req_mgr_inc_idx(&idx, 1,
+					link->req.l_tbl->num_slots);
+				in_q->slot[idx].sync_mode = 0;
+			}
 			spin_lock_bh(&link->link_state_spin_lock);
 			link->state = CAM_CRM_LINK_STATE_ERR;
 			spin_unlock_bh(&link->link_state_spin_lock);
@@ -2226,6 +2231,7 @@ end:
 static int cam_req_mgr_process_trigger(void *priv, void *data)
 {
 	int                                  rc = 0;
+	int32_t                              idx = -1;
 	struct cam_req_mgr_trigger_notify   *trigger_data = NULL;
 	struct cam_req_mgr_core_link        *link = NULL;
 	struct cam_req_mgr_req_queue        *in_q = NULL;
@@ -2248,6 +2254,17 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 	in_q = link->req.in_q;
 
 	mutex_lock(&link->req.lock);
+
+	if (trigger_data->trigger == CAM_TRIGGER_POINT_SOF) {
+		idx = __cam_req_mgr_find_slot_for_req(in_q,
+			trigger_data->req_id);
+		if (idx >= 0) {
+			if (idx == in_q->last_applied_idx)
+				in_q->last_applied_idx = -1;
+			__cam_req_mgr_reset_req_slot(link, idx);
+		}
+	}
+
 	/*
 	 * Check if current read index is in applied state, if yes make it free
 	 *    and increment read index to next slot.
@@ -2471,10 +2488,13 @@ static int cam_req_mgr_cb_notify_trigger(
 	struct cam_req_mgr_trigger_notify *trigger_data)
 {
 	int                              rc = 0;
-	struct crm_workq_task           *task = NULL;
-	struct cam_req_mgr_core_link    *link = NULL;
-	struct cam_req_mgr_trigger_notify   *notify_trigger;
-	struct crm_task_payload         *task_data;
+	struct  crm_workq_task           *task = NULL;
+	struct  cam_req_mgr_core_link    *link = NULL;
+	struct  cam_req_mgr_trigger_notify   *notify_trigger;
+	struct  crm_task_payload         *task_data;
+	bool    send_sof = true;
+	int     i = 0;
+	int64_t sof_time_diff = 0;
 
 	if (!trigger_data) {
 		CAM_ERR(CAM_CRM, "sof_data is NULL");
@@ -2489,6 +2509,44 @@ static int cam_req_mgr_cb_notify_trigger(
 		rc = -EINVAL;
 		goto end;
 	}
+
+	for (i = 0; i < link->num_sof_src; i++) {
+		if (link->dev_sof_evt[i].dev_hdl == trigger_data->dev_hdl) {
+			if (link->dev_sof_evt[i].sof_done == false) {
+				link->dev_sof_evt[i].sof_done = true;
+				link->dev_sof_evt[i].frame_id =
+						trigger_data->frame_id;
+				link->dev_sof_evt[i].timestamp =
+					trigger_data->sof_timestamp_val;
+			} else
+				CAM_INFO(CAM_CRM, "Received Spurious SOF");
+		} else if (link->dev_sof_evt[i].sof_done == false) {
+			send_sof = false;
+		}
+	}
+
+	if (!send_sof)
+		return 0;
+	if (link->num_sof_src > 1) {
+		for (i = 0; i < (link->num_sof_src - 1); i++) {
+			if (link->dev_sof_evt[i].timestamp >=
+				link->dev_sof_evt[i+1].timestamp) {
+				sof_time_diff = link->dev_sof_evt[i].timestamp -
+					link->dev_sof_evt[i+1].timestamp;
+			} else {
+				sof_time_diff =
+					link->dev_sof_evt[i+1].timestamp -
+					link->dev_sof_evt[i].timestamp;
+			}
+			if ((link->dev_sof_evt[i].frame_id !=
+				link->dev_sof_evt[i+1].frame_id) ||
+				sof_time_diff > TIMESTAMP_DIFF_THRESHOLD)
+				return 0;
+		}
+	}
+
+	for (i = 0; i < link->num_sof_src; i++)
+		link->dev_sof_evt[i].sof_done = false;
 
 	spin_lock_bh(&link->link_state_spin_lock);
 	if (link->state < CAM_CRM_LINK_STATE_READY) {
@@ -2514,6 +2572,7 @@ static int cam_req_mgr_cb_notify_trigger(
 	notify_trigger->link_hdl = trigger_data->link_hdl;
 	notify_trigger->dev_hdl = trigger_data->dev_hdl;
 	notify_trigger->trigger = trigger_data->trigger;
+	notify_trigger->req_id = trigger_data->req_id;
 	notify_trigger->sof_timestamp_val = trigger_data->sof_timestamp_val;
 	task->process_cb = &cam_req_mgr_process_trigger;
 	rc = cam_req_mgr_workq_enqueue_task(task, link, CRM_TASK_PRIORITY_0);
@@ -2636,6 +2695,12 @@ static int __cam_req_mgr_setup_link_info(struct cam_req_mgr_core_link *link,
 				max_delay = dev->dev_info.p_delay;
 
 			subscribe_event |= (uint32_t)dev->dev_info.trigger;
+		}
+		if (dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_IFE) {
+			link->dev_sof_evt[link->num_sof_src].dev_hdl =
+				dev->dev_hdl;
+			link->dev_sof_evt[link->num_sof_src].sof_done = false;
+			link->num_sof_src++;
 		}
 	}
 

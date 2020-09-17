@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 #include <linux/errno.h>
 #include <linux/debugfs.h>
 #include <linux/ipa_mhi.h>
+#include <linux/msm_ep_pcie.h>
 #include "mhi_hwio.h"
 #include "mhi_sm.h"
 #include <linux/interrupt.h>
@@ -599,15 +600,22 @@ exit:
 static int mhi_sm_wakeup_host(enum mhi_dev_event event)
 {
 	int res = 0;
+	enum ep_pcie_event pcie_event;
 
 	MHI_SM_FUNC_ENTRY();
 
 	if (mhi_sm_ctx->mhi_state == MHI_DEV_M3_STATE) {
 		/*
-		 * ep_pcie driver is responsible to send the right wakeup
-		 * event, assert WAKE#, according to Link state
+		 * Check and send D3_HOT to enable waking up the host
+		 * using inband PME.
 		 */
-		res = ep_pcie_wakeup_host(mhi_sm_ctx->mhi_dev->phandle);
+		if (mhi_sm_ctx->d_state == MHI_SM_EP_PCIE_D3_HOT_STATE)
+			pcie_event = EP_PCIE_EVENT_PM_D3_HOT;
+		else
+			pcie_event = EP_PCIE_EVENT_PM_D3_COLD;
+
+		res = ep_pcie_wakeup_host(mhi_sm_ctx->mhi_dev->phandle,
+								pcie_event);
 		if (res) {
 			MHI_SM_ERR("Failed to wakeup MHI host, returned %d\n",
 				res);
@@ -742,6 +750,7 @@ static void mhi_sm_dev_event_manager(struct work_struct *work)
 		res = mhi_sm_change_to_M3();
 		if (res)
 			MHI_SM_ERR("Failed switching to M3 state\n");
+		mhi_dev_pm_relax();
 		break;
 	case MHI_DEV_EVENT_HW_ACC_WAKEUP:
 	case MHI_DEV_EVENT_CORE_WAKEUP:
@@ -863,7 +872,7 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 		spin_unlock_irqrestore(&mhi_sm_ctx->mhi_dev->lock, flags);
 
 		res = ep_pcie_enable_endpoint(mhi_sm_ctx->mhi_dev->phandle,
-			EP_PCIE_OPT_ENUM);
+			EP_PCIE_OPT_ENUM | EP_PCIE_OPT_ENUM_ASYNC);
 		if (res) {
 			MHI_SM_ERR("ep-pcie failed to link train, return %d\n",
 				res);
@@ -960,6 +969,9 @@ int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 	mhi_sm_debugfs_destroy();
 	flush_workqueue(mhi_sm_ctx->mhi_sm_wq);
 	destroy_workqueue(mhi_sm_ctx->mhi_sm_wq);
+	/* Initiate MHI IPA reset */
+	ipa_dma_disable();
+	ipa_mhi_destroy();
 	ipa_dma_destroy();
 	mutex_destroy(&mhi_sm_ctx->mhi_state_lock);
 	devm_kfree(mhi_dev->dev, mhi_sm_ctx);

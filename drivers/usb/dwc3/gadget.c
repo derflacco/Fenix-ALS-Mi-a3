@@ -230,8 +230,8 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc, struct dwc3_ep *dep)
 			|| usb_endpoint_xfer_isoc(dep->endpoint.desc))
 		mult = 3;
 
-	if ((dep->endpoint.maxburst > 2) &&
-			dep->endpoint.ep_type == EP_TYPE_GSI
+	if ((dep->endpoint.maxburst > 6) &&
+			usb_endpoint_xfer_bulk(dep->endpoint.desc)
 			&& dwc3_is_usb31(dwc))
 		mult = 6;
 
@@ -380,27 +380,36 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 	const struct usb_endpoint_descriptor *desc = dep->endpoint.desc;
 	struct dwc3		*dwc = dep->dwc;
 	u32			timeout = 3000;
+	u32			saved_config = 0;
 	u32			reg;
 
 	int			cmd_status = 0;
-	int			susphy = false;
 	int			ret = -EINVAL;
 
 	/*
-	 * Synopsys Databook 2.60a states, on section 6.3.2.5.[1-8], that if
-	 * we're issuing an endpoint command, we must check if
-	 * GUSB2PHYCFG.SUSPHY bit is set. If it is, then we need to clear it.
+	 * When operating in USB 2.0 speeds (HS/FS), if GUSB2PHYCFG.ENBLSLPM or
+	 * GUSB2PHYCFG.SUSPHY is set, it must be cleared before issuing an
+	 * endpoint command.
 	 *
-	 * We will also set SUSPHY bit to what it was before returning as stated
-	 * by the same section on Synopsys databook.
+	 * Save and clear both GUSB2PHYCFG.ENBLSLPM and GUSB2PHYCFG.SUSPHY
+	 * settings. Restore them after the command is completed.
+	 *
+	 * DWC_usb3 3.30a and DWC_usb31 1.90a programming guide section 3.2.2
 	 */
 	if (dwc->gadget.speed <= USB_SPEED_HIGH) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
 		if (unlikely(reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
-			susphy = true;
+			saved_config |= DWC3_GUSB2PHYCFG_SUSPHY;
 			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
-			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 		}
+
+		if (reg & DWC3_GUSB2PHYCFG_ENBLSLPM) {
+			saved_config |= DWC3_GUSB2PHYCFG_ENBLSLPM;
+			reg &= ~DWC3_GUSB2PHYCFG_ENBLSLPM;
+		}
+
+		if (saved_config)
+			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 	}
 
 	dwc3_writel(dep->regs, DWC3_DEPCMDPAR0, params->param0);
@@ -491,9 +500,9 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 		}
 	}
 
-	if (unlikely(susphy)) {
+	if (saved_config) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
-		reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+		reg |= saved_config;
 		dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 	}
 
@@ -835,19 +844,6 @@ static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep)
 	dbg_log_string("START for %s(%d)", dep->name, dep->number);
 	dwc3_stop_active_transfer(dwc, dep->number, true);
 
-	/* - giveback all requests to gadget driver */
-	while (!list_empty(&dep->started_list)) {
-		req = next_request(&dep->started_list);
-
-		dwc3_gadget_giveback(dep, req, -ESHUTDOWN);
-	}
-
-	while (!list_empty(&dep->pending_list)) {
-		req = next_request(&dep->pending_list);
-
-		dwc3_gadget_giveback(dep, req, -ESHUTDOWN);
-	}
-
 	if (dep->number == 1 && dwc->ep0state != EP0_SETUP_PHASE) {
 		unsigned int dir;
 
@@ -860,6 +856,19 @@ static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep)
 
 		dwc->eps[0]->trb_enqueue = 0;
 		dwc->eps[1]->trb_enqueue = 0;
+	}
+
+	/* - giveback all requests to gadget driver */
+	while (!list_empty(&dep->started_list)) {
+		req = next_request(&dep->started_list);
+		if (req)
+			dwc3_gadget_giveback(dep, req, -ESHUTDOWN);
+	}
+
+	while (!list_empty(&dep->pending_list)) {
+		req = next_request(&dep->pending_list);
+		if (req)
+			dwc3_gadget_giveback(dep, req, -ESHUTDOWN);
 	}
 
 	dbg_log_string("DONE for %s(%d)", dep->name, dep->number);
@@ -1087,7 +1096,7 @@ static void __dwc3_prepare_one_trb(struct dwc3_ep *dep, struct dwc3_trb *trb,
 			 */
 			if (speed == USB_SPEED_HIGH) {
 				struct usb_ep *ep = &dep->endpoint;
-				unsigned int mult = ep->mult - 1;
+				unsigned int mult = 2;
 				unsigned int maxp = usb_endpoint_maxp(ep->desc);
 
 				if (length <= (2 * maxp))
@@ -1933,7 +1942,7 @@ static int dwc3_gadget_wakeup_int(struct dwc3 *dwc)
 	case DWC3_LINK_STATE_U3:	/* in HS, means SUSPEND */
 		break;
 	case DWC3_LINK_STATE_U1:
-		if (dwc->gadget.speed != USB_SPEED_SUPER) {
+		if (dwc->gadget.speed < USB_SPEED_SUPER) {
 			link_recover_only = true;
 			break;
 		}
@@ -2042,7 +2051,7 @@ static int dwc_gadget_func_wakeup(struct usb_gadget *g, int interface_id)
 	int ret = 0;
 	struct dwc3 *dwc = gadget_to_dwc(g);
 
-	if (!g || (g->speed != USB_SPEED_SUPER))
+	if (!g || (g->speed < USB_SPEED_SUPER))
 		return -ENOTSUPP;
 
 	if (dwc3_gadget_is_suspended(dwc)) {
@@ -2069,6 +2078,38 @@ static int dwc3_gadget_set_selfpowered(struct usb_gadget *g,
 	spin_lock_irqsave(&dwc->lock, flags);
 	g->is_selfpowered = !!is_selfpowered;
 	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return 0;
+}
+
+/**
+ * dwc3_device_core_soft_reset - Issues device core soft reset
+ * @dwc: pointer to our context structure
+ */
+static int dwc3_device_core_soft_reset(struct dwc3 *dwc)
+{
+	u32             reg;
+	int             retries = 10;
+
+	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+	reg |= DWC3_DCTL_CSFTRST;
+	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+
+	do {
+		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+		if (!(reg & DWC3_DCTL_CSFTRST))
+			goto done;
+
+		usleep_range(1000, 1100);
+	} while (--retries);
+
+	dev_err(dwc->dev, "%s timedout\n", __func__);
+
+	return -ETIMEDOUT;
+
+done:
+	/* phy sync delay as per data book */
+	msleep(50);
 
 	return 0;
 }
@@ -2239,6 +2280,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 
 	ret = dwc3_gadget_run_stop(dwc, is_on, false);
 	spin_unlock_irqrestore(&dwc->lock, flags);
+	if (!is_on && ret == -ETIMEDOUT) {
+		dev_err(dwc->dev, "%s: Core soft reset...\n", __func__);
+		dwc3_device_core_soft_reset(dwc);
+	}
 	enable_irq(dwc->irq);
 
 	pm_runtime_mark_last_busy(dwc->dev);
@@ -2323,6 +2368,7 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 {
 	struct dwc3 *dwc = gadget_to_dwc(_gadget);
 	unsigned long flags;
+	int ret = 0;
 
 	if (dwc->dr_mode != USB_DR_MODE_OTG)
 		return -EPERM;
@@ -2345,9 +2391,9 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 			 * Both vbus was activated by otg and pullup was
 			 * signaled by the gadget driver.
 			 */
-			dwc3_gadget_run_stop(dwc, 1, false);
+			ret = dwc3_gadget_run_stop(dwc, 1, false);
 		} else {
-			dwc3_gadget_run_stop(dwc, 0, false);
+			ret = dwc3_gadget_run_stop(dwc, 0, false);
 		}
 	}
 
@@ -2361,6 +2407,11 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	}
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
+	if (!is_active && ret == -ETIMEDOUT) {
+		dev_err(dwc->dev, "%s: Core soft reset...\n", __func__);
+		dwc3_device_core_soft_reset(dwc);
+	}
+
 	return 0;
 }
 
@@ -2523,7 +2574,8 @@ static void __maybe_unused dwc3_gadget_set_speed(struct usb_gadget *g,
 	 * STAR#9000525659: Clock Domain Crossing on DCTL in
 	 * USB 2.0 Mode
 	 */
-	if (dwc->revision < DWC3_REVISION_220A) {
+	if (dwc->revision < DWC3_REVISION_220A &&
+	    !dwc->dis_metastability_quirk) {
 		reg |= DWC3_DCFG_SUPERSPEED;
 	} else {
 		switch (speed) {
@@ -2798,6 +2850,9 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 		int chain;
 
 		req = next_request(&dep->started_list);
+		if (req->trb->ctrl & DWC3_TRB_CTRL_HWO)
+			return 0;
+
 		length = req->request.length;
 		chain = req->num_pending_sgs > 0;
 		if (chain) {
@@ -3960,11 +4015,10 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 
 	init_completion(&dwc->ep0_in_setup);
 
-	dwc->gadget.ops                 = &dwc3_gadget_ops;
-	dwc->gadget.speed               = USB_SPEED_UNKNOWN;
-	dwc->gadget.sg_supported        = true;
-	dwc->gadget.name                = "dwc3-gadget";
-	dwc->gadget.is_otg              = dwc->dr_mode == USB_DR_MODE_OTG;
+	dwc->gadget.ops			= &dwc3_gadget_ops;
+	dwc->gadget.speed		= USB_SPEED_UNKNOWN;
+	dwc->gadget.sg_supported	= true;
+	dwc->gadget.name		= "dwc3-gadget";
 
 	/*
 	 * FIXME We might be setting max_speed to <SUPER, however versions
@@ -3982,7 +4036,8 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	 * is less than super speed because we don't have means, yet, to tell
 	 * composite.c that we are USB 2.0 + LPM ECN.
 	 */
-	if (dwc->revision < DWC3_REVISION_220A)
+	if (dwc->revision < DWC3_REVISION_220A &&
+	    !dwc->dis_metastability_quirk)
 		dev_info(dwc->dev, "changing max_speed on rev %08x\n",
 				dwc->revision);
 
