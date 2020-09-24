@@ -25,7 +25,6 @@ DATE=$(date +%Y%m%d-%H%M)
 
 export ARCH=arm64
 export SUBARCH=arm64
-export LD_LIBRARY_PATH=/home/derflacco/toolchains/proton-clang-20200913/lib/
 export USE_CCACHE=1
 defconfig=/vendor/fenix_defconfig
 
